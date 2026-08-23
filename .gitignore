@@ -5,3 +5,5 @@ __pycache__/
 target/
 *.egg-info/
 .DS_Store
+.index/
+DESIGN.md

@@ -191,6 +191,107 @@ def provenance(ctx: click.Context):
         _mem(ctx.obj["root"]).provenance_report(), indent=2))
 
 
+@cli.command()
+@click.option("--tokens", default=250, help="Rough token budget for the snapshot.")
+@click.pass_context
+def wakeup(ctx: click.Context, tokens: int):
+    """Session-start snapshot: who the user is, hot preferences, recent
+    projects. For custom-agent builders: run this at session start and
+    inject stdout into context — push-style recall without hooks support."""
+    import json
+
+    mem = _mem(ctx.obj["root"])
+    snapshot = _wakeup_snapshot(mem, budget=tokens)
+    click.echo(json.dumps(snapshot, indent=2))
+
+
+def _wakeup_snapshot(mem: Memory, budget: int = 250) -> dict:
+    """Build the identity/preferences/projects snapshot.
+
+    Selection is pure structure: user-node edges by breadth×recency, then
+    top breadth nodes overall. Budget trims in that priority order.
+    """
+    # find the user node: prefer anchors with provenance-verb in-edges
+    # (e.g. [Kushal] receiving user_asserts), else most-connected node
+    from collections import Counter as C
+
+    from .epistemics import PROVENANCE_VERBS
+
+    prov_in = C()
+    all_in = C()
+    for e in mem.edges.values():
+        all_in[e.target_id] += 1
+        if e.verb in PROVENANCE_VERBS:
+            prov_in[e.source_id] += 1  # asserter SENDS user_asserts
+    if prov_in:
+        # the asserter of most provenance edges is the user
+        user_id = max(prov_in, key=lambda k: (prov_in[k], all_in.get(k, 0)))
+    elif all_in:
+        user_id = max(all_in, key=lambda k: all_in[k])
+    else:
+        user_id = None
+
+    lines: list[str] = []
+    sections: list[tuple[str, list[str]]] = []
+
+    if user_id:
+        user = mem.nodes[user_id]
+        sections.append(("USER", [f"{user.label} — {user.content}".strip(" —")]))
+
+        # neighbors of the user grouped by verb, ranked by breadth
+        dests = mem._all_destinations(user)
+        grouped: dict[str, list[str]] = {}
+        for d in sorted(dests, key=lambda x: x.score, reverse=True):
+            n = mem.nodes.get(d.node_id)
+            if not n:
+                continue
+            verb = d.verb or "related"
+            entry = f"{n.label}" + (f" ({n.content[:60]})" if n.content else "")
+            grouped.setdefault(verb, []).append(entry)
+        for verb, items in grouped.items():
+            sections.append((verb.upper(), items))
+
+        # recent projects/events by updatedAt
+        dated = sorted(
+            (n for n in mem.nodes.values()
+             if n.id != user_id and n.type in ("fact", "event")),
+            key=lambda n: n.updated_at or "", reverse=True)[:3]
+        recent = [
+            f"{n.label} ({(n.updated_at or '')[:10]})" for n in dated
+            if all(n.label not in it for _, items in sections[1:] for it in items)
+        ]
+        if recent:
+            sections.append(("RECENT", recent))
+
+    # trim to rough token budget (~4 chars/token), priority = section order
+    used = 0
+    out_sections = []
+    for title, items in sections:
+        kept = []
+        for it in items:
+            cost = len(it) // 4 + 6
+            if used + cost > budget:
+                break
+            kept.append(it)
+            used += cost
+        if kept:
+            out_sections.append((title, kept))
+        if used >= budget:
+            break
+
+    text_parts = []
+    for title, items in out_sections:
+        text_parts.append(f"## {title}\n" + "\n".join(f"- {i}" for i in items))
+    text = "\n\n".join(text_parts)
+
+    return {
+        "text": text,
+        "approx_tokens": used,
+        "budget": budget,
+        "hint": "Inject this at session start; refresh per prompt via search.",
+    }
+
+
 def main() -> None:
     cli()
 
