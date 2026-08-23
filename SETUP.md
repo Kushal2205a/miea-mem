@@ -1,4 +1,4 @@
-# mi∫a — Setup Guide
+# mi∃a — Setup Guide
 
 Graph memory for AI agents. From zero to a working memory wired into your
 agent.

@@ -1,4 +1,4 @@
-# mi∫a
+# mi∃a
 
 **miea** — graph memory for AI agents. *You ∃ in your agent's memory.*
 
