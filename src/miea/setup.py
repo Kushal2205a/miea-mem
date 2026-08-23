@@ -1,4 +1,4 @@
-"""Setup wizard: `agent-mem setup`.
+"""Setup wizard: `miea setup`.
 
 Prompted flow — workspace path, user name, agent detection, paste-ready MCP
 config. Never overwrites existing configs; merging is left to the user.
@@ -16,7 +16,7 @@ from .store import Store
 
 def _mcp_block(server_bin: str, root: str, tier: str = "write") -> str:
     return json.dumps({
-        "kushal-memory": {
+        "miea-memory": {
             "type": "local",
             "command": [server_bin, "--root", root, "--tier", tier],
         }
@@ -36,17 +36,17 @@ def _detect_agents() -> list[tuple[str, Path]]:
 
 
 def _find_server_bin() -> str:
-    """Path to the installed agent-mem-server executable."""
+    """Path to the installed miea-server executable."""
     from shutil import which
 
-    found = which("agent-mem-server")
+    found = which("miea-server")
     if found:
         return str(Path(found).resolve())
     # uv tool default location
-    fallback = Path.home() / ".local/bin/agent-mem-server"
+    fallback = Path.home() / ".local/bin/miea-server"
     if fallback.exists():
         return str(fallback)
-    return "agent-mem-server"
+    return "miea-server"
 
 
 @click.command("setup")
@@ -54,11 +54,11 @@ def _find_server_bin() -> str:
 @click.option("--name", default=None, help="Skip the name prompt.")
 def setup_cmd(root: str | None, name: str | None):
     """Interactive setup: create a workspace and print MCP config."""
-    click.echo("agent-mem setup\n" + "=" * 40)
+    click.echo("miea setup\n" + "=" * 40)
 
     # 1. workspace location
     if not root:
-        default_root = Path.home() / "Documents" / "kushal-memory"
+        default_root = Path.home() / "Documents" / "my-memory"
         root = click.prompt(
             "Workspace location",
             default=str(default_root),

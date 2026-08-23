@@ -1,68 +1,79 @@
-# agent_mem — Setup Guide
+# mi∫a — Setup Guide
 
-Graph-based memory for AI agents. This guide takes a new user from zero to a
-working memory wired into their agent.
+Graph memory for AI agents. From zero to a working memory wired into your
+agent.
 
 ## 1. Install
 
-Requires [uv](https://docs.astral.sh/uv/) (or pip) and Python 3.12+.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 
 ```bash
-# from a clone of this repo:
-uv tool install --with sentence-transformers /path/to/agent_mem
+# from a clone of this repo (PyPI release coming):
+uv tool install --with sentence-transformers /path/to/miea
 ```
 
 - `--with sentence-transformers` adds **semantic search** (paraphrase recall,
-  ~90MB model auto-downloaded once from HuggingFace on first use, cached
-  locally, works offline afterwards). Skip it for a lean keyword-only install.
-- After changing the repo, refresh: `uv tool install --force ...`
+  ~90MB model auto-downloaded once on first use, cached locally, offline
+  after). Skip it for a lean keyword-only install.
+- After changing the repo: `uv tool install --force ...`
 
 Verify:
 
 ```bash
-agent-mem --help
-agent-mem-server --help
+miea --help
+miea-server --help
 ```
 
-## 2. Create your memory workspace
+## 2. Run the setup wizard
 
 ```bash
-agent-mem init "MyMemory" --root ~/Documents/my_memory
-cd ~/Documents/my_memory && git init && git add -A && git commit -m "seed"
+miea setup
 ```
 
-Git is optional but recommended — memory history becomes diffable commits.
+It asks two questions — workspace location and your name — then:
+- creates the workspace + your user anchor node
+- detects installed agents (OpenCode, Claude Code, Cursor, Gemini CLI)
+- prints a paste-ready MCP config block
+
+Non-interactive equivalent:
+
+```bash
+miea setup --root ~/Documents/my_memory --name "Your Name"
+```
+
+Optional but recommended: `git init` inside the workspace so memory changes
+become diffable commits.
 
 ## 3. Use it from the terminal
 
 ```bash
-alias am="agent-mem --root ~/Documents/my_memory"
+alias mie="miea --root ~/Documents/my_memory"
 
-am add "Postgres" --content "relational database"
-am link Postgres persists_with WAL        # creates missing nodes
-am search relational                      # hybrid keyword+semantic
-am land Postgres                          # payload + signpost
-am steer Postgres WAL                     # ride one edge
-am lca WAL B-trees                        # shared context of two nodes
-am forget WAL                             # deletion (explicit only)
-am provenance                             # audit unbacked claims
-am verify --verifier null                 # epistemic pass (offline)
-am placement Postgres WAL                 # where to file a triple
+mie add "Postgres" --content "relational database"
+mie link Postgres persists_with WAL        # creates missing nodes
+mie search relational                      # hybrid keyword+semantic
+mie land Postgres                          # payload + signpost
+mie steer Postgres WAL                     # ride one edge
+mie wakeup                                 # session-start snapshot (JSON)
+mie lca WAL B-trees                        # shared context of two nodes
+mie placement Postgres WAL                 # where to file a triple
+mie provenance                             # audit unbacked claims
+mie verify                                 # epistemic pass (offline)
+mie forget WAL                             # deletion (explicit only)
 ```
 
 ## 4. Wire it into an agent (MCP)
 
-### OpenCode
-
-`~/.config/opencode/opencode.jsonc`:
+Take the JSON block from `miea setup` and paste it into your agent's MCP
+config. For OpenCode (`~/.config/opencode/opencode.jsonc`):
 
 ```jsonc
 {
   "mcp": {
     "my-memory": {
       "type": "local",
-      "command": ["/home/YOU/.local/bin/agent-mem-server",
-                  "--root", "/home/YOU/Documents/my_memory",
+      "command": ["~/.local/bin/miea-server",
+                  "--root", "~/Documents/my_memory",
                   "--tier", "write"],
       "enabled": true
     }
@@ -70,64 +81,41 @@ am placement Postgres WAL                 # where to file a triple
 }
 ```
 
-Plus `~/.config/opencode/AGENTS.md` (see `examples/AGENTS.md`) so the agent
-knows *when* to use memory, not just how.
-
-### Claude Code / other MCP clients
-
-Same server, their config format:
-
-```json
-{
-  "mcpServers": {
-    "my-memory": {
-      "command": "/home/YOU/.local/bin/agent-mem-server",
-      "args": ["--root", "/home/YOU/Documents/my_memory", "--tier", "write"]
-    }
-  }
-}
-```
+Claude Code / Cursor / others use the same server with their own config
+shapes.
 
 ### Tiers
 
-- `--tier read` → agent can only recall (search/land/steer/query_scoped/lca).
-  Write tools do not exist for it — cannot be talked into mutating memory.
+- `--tier read` → recall only (search/land/steer/query_scoped/lca). Write
+  tools don't exist for that agent.
 - `--tier write` → full surface (add/link/forget/verify/provenance/placement).
-  Give write only to agents you trust to learn.
 
-## 5. What the agent gets
+### No AGENTS.md required
 
-- **Server instructions**: the read loop (search → land → steer; stop when
-  satisfied; query_scoped on dead ends).
-- **`memory://guide` resource**: full write policy — salience test, triple
-  grammar, provenance discipline, what not to store.
-- **`memory://reflect` prompt**: end-of-session distillation ritual.
-- **Guardrails**: malformed verbs rejected with teaching messages; system
-  epistemic verbs reserved; duplicates idempotent.
-- **Multi-agent safe**: long-lived servers detect external writes via
-  fingerprint and reload; concurrent CLI + MCP writers coexist.
+The tools teach themselves: descriptions carry usage policy, the server sends
+read-loop instructions at handshake, and `memory://guide` holds the full write
+discipline. A rules-file snippet is optional polish for power users.
+
+## 5. Custom agents
+
+Any MCP-spec client works — paste the config block into its config. For
+agents without hook support, get push-style recall by injecting the snapshot
+at session start:
+
+```python
+out = subprocess.run(["miea", "--root", WS, "wakeup"], capture_output=True)
+prefix = json.loads(out.stdout)["text"]
+```
 
 ## 6. Multi-agent
 
-Any number of agents can share one workspace: give each the same `--root`.
-Mix tiers freely (a read-only researcher + a write-enabled assistant).
-Writes from one are visible to the others on their next tool call.
+Point any number of agents at the same `--root`; mix tiers freely. Writes
+from one are visible to the others on their next tool call (fingerprint-based
+reload).
 
-## 7. Semantic search (optional but recommended)
+## 7. Semantic search
 
-With sentence-transformers installed (step 1), search automatically becomes
-hybrid: exact keyword matches (FTS) fused with paraphrase recall (embeddings)
-via Reciprocal Rank Fusion. "what food do I love" finds `[Biryani]` even
-though the word "food" appears nowhere in it.
-
-Vectors live in `<workspace>/.index/` (gitignored, rebuildable). To force a
-rebuild: delete `.index/` — it regenerates on next load.
-
-## 8. Verify it all works
-
-```bash
-am search "anything you stored"     # should hit
-```
-
-Then ask your agent: "Do you remember what food I love?" — it should search
-memory first, not ask you.
+With sentence-transformers installed, `search` is automatically hybrid:
+keyword matches fused with paraphrase recall via Reciprocal Rank Fusion.
+"what food do I love" finds `[Biryani]` even though "food" appears nowhere in
+it. Vectors live in `<workspace>/.index/` (gitignored; delete to rebuild).

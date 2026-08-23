@@ -5,9 +5,9 @@ import math
 
 import pytest
 
-from agent_mem.core import Memory
-from agent_mem.semantic import NullEmbedder, VectorIndex, cosine, rrf_fuse
-from agent_mem.store import Store
+from miea.core import Memory
+from miea.semantic import NullEmbedder, VectorIndex, cosine, rrf_fuse
+from miea.store import Store
 
 
 class StubEmbedder:

@@ -1,5 +1,5 @@
 [project]
-name = "agent-mem"
+name = "miea"
 version = "0.1.0"
 description = "Graph-based agent memory: structure and pointers only"
 readme = "README.md"
@@ -16,8 +16,8 @@ dependencies = [
 semantic = ["sentence-transformers>=2.0"]
 
 [project.scripts]
-agent-mem = "agent_mem.cli:main"
-agent-mem-server = "agent_mem.mcp_server:main"
+miea = "miea.cli:main"
+miea-server = "miea.mcp_server:main"
 
 [build-system]
 requires = ["uv_build>=0.12.2,<0.13.0"]

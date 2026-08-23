@@ -1,4 +1,4 @@
-"""agent_mem CLI: the shell door into the memory core."""
+"""miea CLI: the shell door into the memory core."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _mem(root: str) -> Memory:
               help="Workspace directory.")
 @click.pass_context
 def cli(ctx: click.Context, root: str):
-    """agent_mem — graph-based agent memory."""
+    """miea — graph-based agent memory."""
     ctx.ensure_object(dict)
     ctx.obj["root"] = root
 

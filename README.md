@@ -1,8 +1,10 @@
-# agent_mem
+# mi∫a
 
-Graph-based memory for AI agents. **Structure and pointers only** — all
-interpretation happens in the consuming agent's LLM at read time. No embeddings,
-no pre-computed summaries. Design doc: [DESIGN.md](./DESIGN.md).
+**miea** — graph memory for AI agents. *You ∃ in your agent's memory.*
+
+**Structure and pointers only** — all interpretation happens in the consuming
+agent's LLM at read time. No pre-computed summaries; embeddings only as an
+optional derived cache. Design notes: [DESIGN.md](./DESIGN.md) (local).
 
 ## Model
 
@@ -11,30 +13,30 @@ no pre-computed summaries. Design doc: [DESIGN.md](./DESIGN.md).
   concatenate into sentences: `[Postgres] --persists_with--> [WAL]`
 - **Nested graphs**: containment hierarchy; every node at any depth is a full
   memory, not a folder
-- **Divergence maps**: parents list their children as ranked *references*
+- **Signposts**: parents list their children as ranked *references*
   (label + breadth score), never generated summaries
 
 ## Quick start
 
 ```bash
-uv sync
-uv run agent-mem init MyMemory --root ~/agent_mem_ws
-export AGENT_MEM_ROOT=~/agent_mem_ws
+uv tool install --with sentence-transformers .   # from this repo
+miea setup                                       # wizard: path + name → MCP JSON
+```
 
-agent-mem add Postgres --content "relational database"
-agent-mem link Postgres persists_with WAL     # creates missing nodes
-agent-mem land Postgres                       # rideable payload + signpost
-agent-mem steer Postgres WAL                  # one branch of the slide
-agent-mem search relational                   # entry points, ranked
-agent-mem query-scoped MyMemory vacuum        # mediated deep dive
-agent-mem lca WAL B-trees                     # lowest common ancestor
-agent-mem forget WAL                          # explicit deletion only
+Or manually:
+
+```bash
+miea init MyMemory --root ~/Documents/my_memory
+miea --root ~/Documents/my_memory add Postgres --content "relational database"
+miea --root ~/Documents/my_memory link Postgres persists_with WAL
+miea --root ~/Documents/my_memory land Postgres      # rideable payload + signpost
+miea --root ~/Documents/my_memory steer Postgres WAL # one branch of the slide
 ```
 
 ## Architecture
 
 ```
-JSON files (durable truth) → in-memory graph/indexes (this lib) → agent via CLI/MCP
+JSON files (durable truth) → in-memory graph/indexes → agent via CLI/MCP
 ```
 
 Files are never grepped or dumped raw — the core returns shaped payloads only.
@@ -43,4 +45,7 @@ equal in importance; low rank costs latency, never visibility.
 
 ## Status
 
-Early. Core model, read loop, write tier, LCA, and CLI work; MCP server next.
+Core complete (47 tests): model, store, waterslide read loop with signpost
+paging, write tier with guardrails, LCA, promotion-split, provenance audit,
+epistemic verify pass, hybrid FTS+vector search, `wakeup` snapshot, setup
+wizard, CLI + MCP server with read/write tiers.

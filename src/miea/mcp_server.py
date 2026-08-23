@@ -1,10 +1,10 @@
-"""MCP server: exposes agent_mem's tiered tool surface over the MCP protocol.
+"""MCP server: exposes miea's tiered tool surface over the MCP protocol.
 
 READ tier (default): search, land, steer, query_scoped, lca
 WRITE tier: everything above + add, link, forget, neighbors
 
 Tier is fixed at startup — never inferred from conversation:
-    agent-mem-server --root DIR [--tier read|write]
+    miea-server --root DIR [--tier read|write]
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from .core import Memory
 from .guide import register_guide_resource
 
 mcp = MCPServer(
-    "agent-mem",
+    "miea",
     instructions=(
         "Graph-based agent memory. Structure and pointers only — you are the "
         "interpreter. Read loop: search → land → steer. Stop when a node's "
@@ -177,7 +177,7 @@ def _register_write_tools() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="agent-mem-server")
+    parser = argparse.ArgumentParser(prog="miea-server")
     parser.add_argument("--root", required=True, help="Workspace directory.")
     parser.add_argument("--tier", choices=["read", "write"], default="read",
                         help="read: signposts only. write: full surface.")

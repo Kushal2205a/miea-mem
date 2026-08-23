@@ -4,7 +4,7 @@ Etiquette lives here as a readable resource; enforcement lives in the tools.
 """
 
 GUIDE = """\
-# agent_mem — usage guide
+# miea — usage guide
 
 You are the interpreter of this memory. The structure gives you pointers and
 rankings; you supply judgment. Follow these rules.
@@ -56,7 +56,7 @@ Worth remembering, by type:
 - `preference` — user identity & taste: themes, tools, OS, communication
   style, dislikes. Highest value; never verify; user wins.
 - `fact` (user-domain) — projects, goals, decisions, constraints: "building
-  kliae", "chose Python for agent_mem".
+  kliae", "chose Python for miea".
 - `procedure` — reusable success patterns: "deploy: uv sync then restart
   service". Only if it worked and will recur.
 - `event` — dated context: "migrated to uv on 2026-08-23".
