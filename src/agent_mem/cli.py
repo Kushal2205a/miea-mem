@@ -55,10 +55,11 @@ def search(ctx: click.Context, query: str, limit: int):
 
 @cli.command()
 @click.argument("ref")
+@click.option("--page", default=0, help="Signpost page (TOP_K per page).")
 @click.pass_context
-def land(ctx: click.Context, ref: str):
-    """Land on a node; print its rideable payload + signpost."""
-    click.echo(_mem(ctx.obj["root"]).land(ref).render())
+def land(ctx: click.Context, ref: str, page: int = 0):
+    """Land on a node; print its rideable payload + signpost (use --page to walk it)."""
+    click.echo(_mem(ctx.obj["root"]).land(ref, page=page).render())
 
 
 @cli.command()
@@ -131,6 +132,63 @@ def neighbors(ctx: click.Context, ref: str):
     for n in _mem(ctx.obj["root"]).neighbors(ref):
         arrow = f"--{n['verb']}-->" if n["direction"] == "out" else f"<--{n['verb']}--"
         click.echo(f"{arrow} [{n['other']}]")
+
+
+@cli.command()
+@click.argument("source")
+@click.argument("target")
+@click.pass_context
+def placement(ctx: click.Context, source: str, target: str):
+    """Where to file a SOURCE→TARGET triple: as deep as it's true, no deeper."""
+    import json
+    click.echo(json.dumps(
+        _mem(ctx.obj["root"]).placement_hint(source, target), indent=2))
+
+
+@cli.command("verify")
+@click.option("--limit", default=None, type=int,
+              help="Max claims to check this run.")
+@click.option("--verifier", default="null",
+              type=click.Choice(["null", "serp"]),
+              help="null: mark unverifiable (offline). serp: search-engine "
+                   "verdict via AGENT_MEM_SEARCH_CMD.")
+@click.pass_context
+def verify(ctx: click.Context, limit: int | None, verifier: str):
+    """Run the epistemic annotation pass over pending world-claims."""
+    from .epistemics import EpistemicPass, NullVerifier, make_serp_verifier
+    import json
+    import os
+    import shlex
+    import subprocess
+
+    if verifier == "serp":
+        cmd = os.environ.get("AGENT_MEM_SEARCH_CMD")
+        if not cmd:
+            raise click.ClickException(
+                "set AGENT_MEM_SEARCH_CMD='<query placeholder supported>' "
+                "to a command that takes the query and prints JSON "
+                "[{title: ...}, ...]")
+
+        def search_fn(q: str) -> list[dict]:
+            argv = [part.replace("{q}", q) for part in shlex.split(cmd)]
+            out = subprocess.run(argv, capture_output=True, text=True,
+                                 timeout=30)
+            return json.loads(out.stdout)
+
+        v = make_serp_verifier(search_fn)
+    else:
+        v = NullVerifier()
+    report = EpistemicPass(_mem(ctx.obj["root"]), v).run(limit=limit)
+    click.echo(json.dumps(report, indent=2) or "[]")
+
+
+@cli.command("provenance")
+@click.pass_context
+def provenance(ctx: click.Context):
+    """Audit: which claim nodes lack a provenance edge."""
+    import json
+    click.echo(json.dumps(
+        _mem(ctx.obj["root"]).provenance_report(), indent=2))
 
 
 def main() -> None:
