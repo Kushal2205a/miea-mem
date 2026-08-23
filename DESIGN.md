@@ -266,4 +266,7 @@ this; sources disagree." Not amnesia, not obedience — annotation plus framing.
 
 ## Status
 
-Brainstorming. Nothing built yet.
+Core built and tested (28 tests): model, store, in-memory graph, breadth
+scoring, read loop with signpost paging, write tier, LCA, promotion-split,
+provenance report, epistemic annotation pass, CLI + MCP server with tiered
+tools. Remaining: real SERP verifier backend wiring; future kliae-style UI.
