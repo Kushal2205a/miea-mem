@@ -128,7 +128,8 @@ def setup_cmd(root: str | None, name: str | None):
     click.echo(block)
     click.echo(
         f"\nDone. Point any MCP client at {root_path}.\n"
-        'Test: ask your agent "What do you know about me?"')
+        "The workspace is empty — memory can only recall what was stored.\n"
+        'Seed it by telling your agent things: "remember that I love X".')
 
 
 def mem_all_nodes(store: Store):
