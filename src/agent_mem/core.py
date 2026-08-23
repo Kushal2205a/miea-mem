@@ -324,18 +324,28 @@ class Memory:
     # -- write tier ----------------------------------------------------------
 
     def write_triple(self, source_ref: str, verb: str, target_ref: str,
-                     *, create_missing: bool = False) -> Edge:
+                     *, create_missing: bool = False,
+                     provenance: str | None = None) -> Edge:
         """Add a named edge (noun-verb-noun). Dedup: refuse exact duplicate.
 
-        System verbs (corroborated_by, contradicted_by, …) are reserved for
-        the epistemic verifier — user/agent writes can never create or flip
-        corroboration. That's the manipulation-resistance guarantee.
+        Policy guardrails:
+        - System verbs (corroborated_by, …) are reserved for the epistemic
+          verifier — user/agent writes can never create or flip corroboration.
+        - Verbs must read as sentences: lowercase_snake phrases.
+        - `provenance="user_asserts"|"agent_inferred"|"source_says"` also
+          records who is asserting this triple (recommended for claims).
         """
-        from .epistemics import SYSTEM_VERBS
+        from .epistemics import PROVENANCE_VERBS, SYSTEM_VERBS
 
         if verb in SYSTEM_VERBS:
             raise ValueError(
                 f"verb {verb!r} is system-reserved (epistemic verifier only)")
+        if not re.fullmatch(r"[a-z][a-z0-9_]*(_[a-z0-9_]+)*", verb):
+            raise ValueError(
+                f"verb {verb!r} must be a lowercase_snake phrase that reads "
+                "as a sentence (e.g. persists_with)")
+        if provenance is not None and provenance not in PROVENANCE_VERBS:
+            raise ValueError(f"provenance must be one of {sorted(PROVENANCE_VERBS)}")
         s = self._resolve(source_ref, create=create_missing)
         t = self._resolve(target_ref, create=create_missing)
         for eid in self.out_edges.get(s.id, []):
@@ -349,6 +359,22 @@ class Memory:
         self.store.save_edge(edge)
         self._register_in_graph(edge.id, s.id, is_edge=True)
         self._mark_dirty(s.id)
+        if provenance:
+            # Provenance: record who asserts the claim made by this triple.
+            # The claim node is the TARGET (the new fact being stated).
+            # user_asserts → [source/user] --user_asserts--> [target]
+            # agent_inferred → [agent] --agent_inferred--> [target]
+            # source_says is satisfied by the triple itself.
+            if provenance != "source_says":
+                asserter = self._resolve("agent", create=True) if \
+                    provenance == "agent_inferred" else s
+                pe = Edge(id=new_id(), source_id=asserter.id,
+                          target_id=t.id, verb=provenance)
+                self.edges[pe.id] = pe
+                self.out_edges.setdefault(pe.source_id, []).append(pe.id)
+                self.in_edges.setdefault(pe.target_id, []).append(pe.id)
+                self.store.save_edge(pe)
+                self._register_in_graph(pe.id, t.id, is_edge=True)
         return edge
 
     def create_node(self, label: str, content: str = "", type: str = "fact",
