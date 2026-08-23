@@ -53,12 +53,14 @@ async def search(query: str, limit: int = 5) -> str:
 
 
 @mcp.tool()
-async def land(ref: str) -> str:
+async def land(ref: str, page: int = 0) -> str:
     """Land on a memory node (id or exact label). Returns its content plus a
     signpost: top-k destinations, each with the named edge verb that reaches
-    it and a breadth score. Stop here if the content answers you; otherwise
-    steer toward the best destination; on a dead end use query_scoped."""
-    return _mem().land(ref).render()
+    it, a breadth score, and epistemic status when noteworthy. Stop here if
+    the content answers you; otherwise steer toward the best destination; on
+    a dead end use query_scoped. If more destinations exist than shown, land
+    again with page=1, 2, … to walk the signpost."""
+    return _mem().land(ref, page=max(0, page)).render()
 
 
 @mcp.tool()
@@ -108,7 +110,8 @@ def _register_write_tools() -> None:
     async def link(source: str, verb: str, target: str) -> str:
         """(write tier) Add a named edge SOURCE --VERB--> TARGET, e.g.
         'Postgres persists_with WAL'. Missing nodes are created. Idempotent.
-        Search before writing to avoid duplicate propositions."""
+        System verbs (corroborated_by etc.) are reserved. Search before
+        writing to avoid duplicate propositions."""
         e = _mem().write_triple(source, verb, target, create_missing=True)
         return f"[{source}] --{e.verb}--> [{target}]"
 
@@ -130,6 +133,32 @@ def _register_write_tools() -> None:
             lines.append(f"{arrow} [{n['other']}]")
         return "\n".join(lines) or "no neighbors"
 
+    @mcp.tool()
+    async def placement(source: str, target: str) -> str:
+        """(write tier) Where to file a SOURCE→TARGET triple: as deep as it's
+        true, no deeper. Returns a structural suggestion (leaf vs ancestor)."""
+        import json
+
+        return json.dumps(_mem().placement_hint(source, target), indent=2)
+
+    @mcp.tool()
+    async def verify(limit: int | None = None) -> str:
+        """(write tier) Run the epistemic annotation pass: check pending
+        world-claims against the configured verifier and annotate them.
+        Never deletes — only adds corroboration/contradiction edges."""
+        import json
+
+        report = _state["verify_pass"]().run(
+            limit=max(1, min(limit, 50)) if limit else None)
+        return json.dumps(report, indent=2) or "[]"
+
+    @mcp.tool()
+    async def provenance() -> str:
+        """(write tier) Audit: claim nodes lacking a provenance edge."""
+        import json
+
+        return json.dumps(_mem().provenance_report(), indent=2)
+
 
 # ---------------------------------------------------------------------------
 # entry point
@@ -146,7 +175,13 @@ def main() -> None:
     _state["mem"] = Memory(args.root)
     _state["tier"] = args.tier
     if args.tier == "write":
+        from .epistemics import EpistemicPass, NullVerifier
+
         _register_write_tools()
+        # verifier wiring: NullVerifier offline default; a SERP backend can be
+        # injected here once a search provider is configured.
+        _state["verify_pass"] = lambda: EpistemicPass(
+            _state["mem"], NullVerifier())
 
     mcp.run(transport="stdio")
 
