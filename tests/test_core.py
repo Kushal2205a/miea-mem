@@ -124,3 +124,18 @@ def test_breadth_order_only_never_filters(mem: Memory):
     # cold node still landable — rank affects order, never access
     p = mem.land("Vacuum tuning", mark_access=False)
     assert p.node.label == "Vacuum tuning"
+
+
+def test_refresh_if_changed_picks_up_external_writes(mem: Memory, ws):
+    # simulate another process (CLI/second agent) writing to the workspace
+    other = Memory(ws)
+    other.create_node("WrittenByOther")
+    # our long-lived instance hasn't reloaded yet
+    assert "WrittenByOther" not in {n.label for n in mem.nodes.values()}
+    mem.refresh_if_changed()
+    assert "WrittenByOther" in {n.label for n in mem.nodes.values()}
+
+
+def test_payload_shows_dates(mem: Memory):
+    p = mem.land("Databases", mark_access=False)
+    assert "first:" in p.render()
