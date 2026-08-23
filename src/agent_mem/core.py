@@ -11,6 +11,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 from .model import Breadth, Edge, Graph, Manifest, Node, new_id
 from .store import Store
@@ -38,6 +39,14 @@ def _parse_iso(s: str | None) -> float | None:
         return datetime.fromisoformat(s).timestamp()
     except ValueError:
         return None
+
+
+def _fmt_date(s: str | None) -> str:
+    """Human date for payloads — agents reason about recency with this."""
+    ts = _parse_iso(s)
+    if not ts:
+        return "unknown"
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +95,12 @@ class Payload:
             lines.append(f"  sentence-so-far: {' '.join(self.path_so_far)}")
         if self.node.child_graph_id:
             lines.append("  (has nested graph)")
+        created = _fmt_date(self.node.created_at)
+        updated = _fmt_date(self.node.updated_at)
+        stamp = f"  first: {created}"
+        if updated and updated != created:
+            stamp += f" · last updated: {updated}"
+        lines.append(stamp)
         lines.append(f"  epistemic: {self.node.epistemic_status}")
         if self.signpost:
             lines.append("  destinations:")
@@ -107,7 +122,7 @@ class Payload:
 class Memory:
     """In-memory graph loaded from the workspace. All ops go through here."""
 
-    def __init__(self, root: str):
+    def __init__(self, root: str, *, embedder: Any | None = "auto"):
         self.store = Store(root)
         self.manifest: Manifest = self.store.load_manifest()
 
@@ -123,7 +138,46 @@ class Memory:
         self._fts: dict[str, Counter] = {}          # node_id -> token counts
         self._dirty_maps: set[str] = set()          # ancestors needing map regen
 
+        # Semantic layer (optional): derived sidecar index; absent model → None
+        self._vector_index: Any | None = None
+        if embedder == "auto":
+            from .semantic import try_load_embedder
+
+            emb = try_load_embedder()
+            if emb is not None:
+                from .semantic import VectorIndex
+
+                self._vector_index = VectorIndex(self.store.root, emb)
+        elif embedder is not None:
+            from .semantic import VectorIndex
+
+            self._vector_index = VectorIndex(self.store.root, embedder)
+
         self._load()
+
+        if self._vector_index is not None:
+            self._vector_index.ensure_all(self.nodes)
+        self._fingerprint = self.store.fingerprint()
+
+    def refresh_if_changed(self) -> None:
+        """Reload from disk when another process modified the workspace.
+
+        Multi-agent safety: an MCP server is long-lived while CLI writers are
+        short-lived. A cheap stat fingerprint per call detects external
+        writes; only then do we pay for a full reload.
+        """
+        fp = self.store.fingerprint()
+        if fp != self._fingerprint:
+            self.nodes.clear()
+            self.edges.clear()
+            self.graphs.clear()
+            self.out_edges.clear()
+            self.in_edges.clear()
+            self.parent_of.clear()
+            self._fts.clear()
+            self._dirty_maps.clear()
+            self._load()
+            self._fingerprint = fp
 
     # -- loading -------------------------------------------------------------
 
@@ -154,6 +208,10 @@ class Memory:
         self.parent_of.clear()
         for n in self.nodes.values():
             self._index_node(n)
+        if self._vector_index is not None:
+            self._vector_index.vectors.clear()
+            self._vector_index.ensure_all(self.nodes)
+            self._vector_index.save()
         for e in self.edges.values():
             self.out_edges.setdefault(e.source_id, []).append(e.id)
             self.in_edges.setdefault(e.target_id, []).append(e.id)
@@ -179,19 +237,41 @@ class Memory:
     # -- search / entry points ----------------------------------------------
 
     def search(self, query: str, limit: int = 5) -> list[tuple[Node, float]]:
+        """Hybrid entry-point search: FTS (exact terms) + vectors (paraphrase)
+        fused via Reciprocal Rank Fusion. Falls back to pure FTS when no
+        embedder is available. Order-only, as always."""
+        self.refresh_if_changed()
         q = Counter(_tokenize(query))
-        if not q:
+        fts_ids: list[str] = []
+        if q:
+            fts_scored: list[tuple[float, str]] = []
+            for nid, tokens in self._fts.items():
+                overlap = sum((tokens & q).values())
+                if overlap:
+                    norm = sum(tokens.values()) or 1
+                    fts_scored.append((overlap / math.sqrt(norm), nid))
+            fts_scored.sort(reverse=True)
+            fts_ids = [nid for _, nid in fts_scored]
+
+        vec_ids: list[str] = []
+        if self._vector_index is not None:
+            try:
+                self._vector_index.ensure_all(self.nodes)
+                vec_hits = self._vector_index.query(query, k=limit * 3)
+                # relevance floor: cosine ≥ 0.35 keeps noise out
+                vec_ids = [nid for nid, score in vec_hits if score >= 0.35]
+            except Exception:
+                vec_ids = []  # model hiccup → degrade, never crash
+
+        if not fts_ids and not vec_ids:
             return []
-        scored: list[tuple[float, str]] = []
-        for nid, tokens in self._fts.items():
-            overlap = sum((tokens & q).values())
-            if not overlap:
-                continue
-            norm = sum(tokens.values()) or 1
-            scored.append((overlap / math.sqrt(norm), nid))
-        scored.sort(reverse=True)
+
+        from .semantic import rrf_fuse
+
+        lists = [l for l in (fts_ids, vec_ids) if l]
+        fused = rrf_fuse(lists, top=max(limit * 2, len(fts_ids)))
         out = []
-        for _, nid in scored[:limit]:
+        for nid, _ in fused[:limit]:
             out.append((self.nodes[nid], self.breadth_score(nid)))
         return out
 
@@ -211,6 +291,7 @@ class Memory:
         (page 1, 2, …). The payload reports total destinations so the agent
         knows more pages exist; query_scoped remains the mediated shortcut.
         """
+        self.refresh_if_changed()
         node = self._resolve(ref)
         if mark_access:
             from .model import now_iso
@@ -228,6 +309,7 @@ class Memory:
         include_edges: bool = False,
     ) -> Payload:
         """Take one branch of the slide toward a signpost destination."""
+        self.refresh_if_changed()
         node = self._resolve(ref)
         dest = self._find_destination(node, destination_label_or_id)
         if dest is None:
@@ -248,6 +330,7 @@ class Memory:
 
     def query_scoped(self, graph_ref: str, query: str, limit: int = 5) -> list[Payload]:
         """Mediated deep dive inside one subtree. Returns answers, not paths."""
+        self.refresh_if_changed()
         g = self._resolve_graph(graph_ref)
         allowed = self._subtree_nodes(g.id)
         q = Counter(_tokenize(query))
@@ -348,10 +431,16 @@ class Memory:
             raise ValueError(f"provenance must be one of {sorted(PROVENANCE_VERBS)}")
         s = self._resolve(source_ref, create=create_missing)
         t = self._resolve(target_ref, create=create_missing)
-        for eid in self.out_edges.get(s.id, []):
-            e = self.edges[eid]
-            if e.target_id == t.id and e.verb == verb:
-                return e  # already known — idempotent
+        duplicate = any(
+            self.edges[eid].target_id == t.id and self.edges[eid].verb == verb
+            for eid in self.out_edges.get(s.id, []))
+        if duplicate and not provenance:
+            # already known — idempotent (a provenance-less repeat is a no-op);
+            # with provenance requested, fall through to add attribution only
+            return next(
+                self.edges[eid] for eid in self.out_edges.get(s.id, [])
+                if self.edges[eid].target_id == t.id
+                and self.edges[eid].verb == verb)
         edge = Edge(id=new_id(), source_id=s.id, target_id=t.id, verb=verb)
         self.edges[edge.id] = edge
         self.out_edges.setdefault(s.id, []).append(edge.id)
@@ -359,22 +448,37 @@ class Memory:
         self.store.save_edge(edge)
         self._register_in_graph(edge.id, s.id, is_edge=True)
         self._mark_dirty(s.id)
-        if provenance:
-            # Provenance: record who asserts the claim made by this triple.
-            # The claim node is the TARGET (the new fact being stated).
-            # user_asserts → [source/user] --user_asserts--> [target]
-            # agent_inferred → [agent] --agent_inferred--> [target]
-            # source_says is satisfied by the triple itself.
-            if provenance != "source_says":
-                asserter = self._resolve("agent", create=True) if \
-                    provenance == "agent_inferred" else s
-                pe = Edge(id=new_id(), source_id=asserter.id,
-                          target_id=t.id, verb=provenance)
-                self.edges[pe.id] = pe
-                self.out_edges.setdefault(pe.source_id, []).append(pe.id)
-                self.in_edges.setdefault(pe.target_id, []).append(pe.id)
-                self.store.save_edge(pe)
-                self._register_in_graph(pe.id, t.id, is_edge=True)
+        self._attach_provenance(edge, provenance, s=s, t=t)
+        return edge
+
+    def _attach_provenance(self, edge: Edge, provenance: str | None,
+                           *, s: Node, t: Node) -> Edge:
+        """Record who asserts the claim made by this triple's target.
+
+        user_asserts → [source/user] --user_asserts--> [target]
+        agent_inferred → [agent] --agent_inferred--> [target]
+        source_says → satisfied by the triple itself.
+        Idempotent: skips when the same provenance edge already exists.
+        """
+        from .epistemics import PROVENANCE_VERBS  # noqa: F401 — validated upstream
+
+        if not provenance or provenance == "source_says":
+            return edge
+        asserter = self._resolve("agent", create=True) if \
+            provenance == "agent_inferred" else s
+        already = any(
+            self.edges[eid].target_id == t.id
+            and self.edges[eid].verb == provenance
+            for eid in self.out_edges.get(asserter.id, []))
+        if already:
+            return edge
+        pe = Edge(id=new_id(), source_id=asserter.id,
+                  target_id=t.id, verb=provenance)
+        self.edges[pe.id] = pe
+        self.out_edges.setdefault(pe.source_id, []).append(pe.id)
+        self.in_edges.setdefault(pe.target_id, []).append(pe.id)
+        self.store.save_edge(pe)
+        self._register_in_graph(pe.id, t.id, is_edge=True)
         return edge
 
     def create_node(self, label: str, content: str = "", type: str = "fact",
@@ -384,6 +488,9 @@ class Memory:
         node = Node(id=new_id(), label=label, type=type, content=content)
         self.nodes[node.id] = node
         self._index_node(node)
+        if self._vector_index is not None:
+            self._vector_index.ensure_node(node)
+            self._vector_index.save()
         g.node_ids.add(node.id)
         self.parent_of[node.id] = (g.id, g.parent_node_id)
         self.store.save_node(node)
@@ -409,6 +516,9 @@ class Memory:
         self._fts.pop(node.id, None)
         self.out_edges.pop(node.id, None)
         self.in_edges.pop(node.id, None)
+        if self._vector_index is not None:
+            self._vector_index.remove(node.id)
+            self._vector_index.save()
         del self.nodes[node.id]
         self.store.delete_node(node.id)
         return removed
