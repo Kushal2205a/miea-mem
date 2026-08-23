@@ -15,6 +15,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from .core import Memory
+from .guide import register_guide_resource
 
 mcp = MCPServer(
     "agent-mem",
@@ -23,11 +24,13 @@ mcp = MCPServer(
         "interpreter. Read loop: search → land → steer. Stop when a node's "
         "content satisfies you; steer along signpost verbs when routed; use "
         "query_scoped on a dead end. Ranking orders destinations but never "
-        "hides them."
+        "hides them. Before your first write, read memory://guide."
     ),
 )
 
 _state: dict[str, Any] = {"tier": "read"}
+
+register_guide_resource(mcp)
 
 
 def _mem() -> Memory:
@@ -107,13 +110,21 @@ def _register_write_tools() -> None:
         return f"created [{n.label}] {n.id}"
 
     @mcp.tool()
-    async def link(source: str, verb: str, target: str) -> str:
+    async def link(source: str, verb: str, target: str,
+                   provenance: str | None = None) -> str:
         """(write tier) Add a named edge SOURCE --VERB--> TARGET, e.g.
-        'Postgres persists_with WAL'. Missing nodes are created. Idempotent.
-        System verbs (corroborated_by etc.) are reserved. Search before
-        writing to avoid duplicate propositions."""
-        e = _mem().write_triple(source, verb, target, create_missing=True)
-        return f"[{source}] --{e.verb}--> [{target}]"
+        'Postgres persists_with WAL'. Verb must be a lowercase_snake phrase
+        that reads as a sentence; system verbs (corroborated_by etc.) are
+        reserved. Missing nodes are created. Idempotent — search before
+        writing to avoid duplicate propositions. Pass provenance
+        ('user_asserts' | 'agent_inferred') to record who asserts this."""
+        try:
+            e = _mem().write_triple(source, verb, target, create_missing=True,
+                                    provenance=provenance)
+        except ValueError as err:
+            return f"rejected: {err}"
+        extra = f" (+{provenance})" if provenance else ""
+        return f"[{source}] --{e.verb}--> [{target}]{extra}"
 
     @mcp.tool()
     async def forget(ref: str) -> str:
