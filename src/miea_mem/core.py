@@ -758,7 +758,11 @@ class Memory:
         matches = [g for g in self.graphs.values() if g.name.lower() == ref.lower()]
         if len(matches) == 1:
             return matches[0]
-        raise LookupError(f"no graph {ref!r}")
+        available = ", ".join(
+            f"'{g.name}'" for g in self.graphs.values()) or "(none)"
+        raise LookupError(
+            f"no graph matching {ref!r}. Available graphs: {available}. "
+            "Tip: under_graph is optional — omit it to file at root.")
 
     def _find_destination(self, node: Node, want: str) -> Destination | None:
         p = self._payload(node)

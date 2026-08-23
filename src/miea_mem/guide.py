@@ -35,6 +35,9 @@ Triples are sentences. Write them well:
    Reuse existing verbs from the neighborhood when they fit.
 3. **Placement: as deep as it's true, no deeper.** Run `placement(source,
    target)`; file generalizations at intermediate nodes, specifics at leaves.
+   For `add(under_graph=...)`: omit it for everyday facts — they live at
+   root. Only pass a graph name (e.g. `"PG internals"`) when the fact
+   belongs to a specific domain. If unsure, omit it.
 4. **Every claim needs provenance.** After creating a claim-type node, link it:
    `[user] --user_asserts--> [claim]` (or `agent_inferred` if you derived it).
    Run `provenance()` occasionally to catch unbacked claims.
