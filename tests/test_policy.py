@@ -61,3 +61,26 @@ async def test_guide_resource_registered(tmp_path):
     text = "".join(getattr(c, "content", "") or getattr(c, "text", "")
                    for c in contents)
     assert "search before writing" in text.lower()
+
+
+async def test_reflect_prompt_registered(tmp_path):
+    from mcp.server.mcpserver import MCPServer
+    from agent_mem.guide import register_guide_resource
+
+    m = MCPServer("t")
+    register_guide_resource(m)
+    prompts = await m.list_prompts()
+    names = {p.name for p in prompts}
+    assert "reflect" in names
+
+    result = await m.get_prompt("reflect")
+    text = result.messages[0].content.text
+    assert "salience test" in text
+    assert "supersedes" in text
+
+
+def test_supersedes_verb_is_writable(mem: Memory):
+    # corrections flow: new fact supersedes stale one
+    mem.write_triple("NixOS usage", "supersedes", "Arch usage",
+                     create_missing=True)
+    assert any(e.verb == "supersedes" for e in mem.edges.values())
