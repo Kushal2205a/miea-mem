@@ -1,6 +1,6 @@
 [project]
 name = "miea-mem"
-version = "0.0.1"
+version = "0.0.2"
 description = "Graph-based agent memory: structure and pointers only"
 readme = "README.md"
 authors = [
