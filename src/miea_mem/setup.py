@@ -96,6 +96,32 @@ def setup_cmd(root: str | None, name: str | None):
         store.save_graph(g)
         click.echo(f"✓ User node [{name}] created")
 
+    # 3. git tracking (automatic when git is available)
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None:
+        click.echo("• git not found — skipping version history "
+                   "(run `git init` here later if you want it)")
+    elif not (root_path / ".git").exists():
+        try:
+            subprocess.run(["git", "init", "-q"], cwd=root_path, check=True)
+            subprocess.run(["git", "add", "-A"], cwd=root_path, check=True)
+            subprocess.run(
+                ["git", "commit", "-q",
+                 "-m", f"seed: {name}'s memory workspace"],
+                cwd=root_path, check=True,
+                env={"GIT_AUTHOR_NAME": name or "miea",
+                     "GIT_AUTHOR_EMAIL": "miea@localhost",
+                     "GIT_COMMITTER_NAME": name or "miea",
+                     "GIT_COMMITTER_EMAIL": "miea@localhost"})
+            click.echo("✓ Git history initialized (memory changes are now "
+                       "diffable commits)")
+        except subprocess.CalledProcessError:
+            click.echo("• git init failed — continuing without history")
+    else:
+        click.echo("• Git already tracks this workspace")
+
     # 3. semantic search availability (informational only)
     try:
         from .semantic import try_load_embedder
