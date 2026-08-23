@@ -42,6 +42,26 @@ class Store:
         self.edges_dir = self.root / "edges"
         self.graphs_dir = self.root / "graphs"
 
+    def fingerprint(self) -> tuple:
+        """Cheap workspace-change detector: (file count, max mtime)."""
+        latest = 0.0
+        count = 0
+        for d in (self.nodes_dir, self.edges_dir, self.graphs_dir):
+            if not d.exists():
+                continue
+            for p in d.iterdir():
+                if p.suffix == ".json":
+                    count += 1
+                    try:
+                        latest = max(latest, p.stat().st_mtime)
+                    except OSError:
+                        pass
+        mf = self.root / "manifest.json"
+        if mf.exists():
+            count += 1
+            latest = max(latest, mf.stat().st_mtime)
+        return (count, round(latest, 3))
+
     # -- creation ------------------------------------------------------------
 
     def init_workspace(self, name: str = "Memory") -> Manifest:
