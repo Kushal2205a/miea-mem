@@ -1,0 +1,24 @@
+[project]
+name = "agent-mem"
+version = "0.1.0"
+description = "Graph-based agent memory: structure and pointers only"
+readme = "README.md"
+authors = [
+    { name = "Kushal Panchali", email = "introvertedspacemine2@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.4.2",
+]
+
+[project.scripts]
+agent-mem = "agent_mem.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
