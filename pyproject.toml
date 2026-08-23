@@ -1,5 +1,5 @@
 [project]
-name = "miea"
+name = "miea-mem"
 version = "0.0.1"
 description = "Graph-based agent memory: structure and pointers only"
 readme = "README.md"

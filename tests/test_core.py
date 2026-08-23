@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from miea.core import Memory
-from miea.store import Store
+from miea_mem.core import Memory
+from miea_mem.store import Store
 
 
 @pytest.fixture()
@@ -80,7 +80,7 @@ def test_lca_of_siblings(mem: Memory):
 
 
 def test_lca_through_nested_graph(mem: Memory, ws: str):
-    from miea.model import Graph, new_id
+    from miea_mem.model import Graph, new_id
 
     # give Postgres a child graph containing a leaf
     pg = mem._resolve("Postgres")

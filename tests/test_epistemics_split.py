@@ -2,8 +2,8 @@
 
 import pytest
 
-from miea.core import Memory
-from miea.epistemics import (
+from miea_mem.core import Memory
+from miea_mem.epistemics import (
     CONTRADICTED,
     CORROBORATED,
     CONTESTED,
@@ -14,7 +14,7 @@ from miea.epistemics import (
     classify_claim,
     make_serp_verifier,
 )
-from miea.store import Store
+from miea_mem.store import Store
 
 
 @pytest.fixture()
@@ -227,7 +227,7 @@ def test_placement_hint_same_domain_vs_cross_branch(mem: Memory, tmp_path):
 def test_placement_hint_cross_branch_points_at_ancestor(mem: Memory):
     mem.create_node("Postgres")
     # build nested structure: Postgres owns child graph with WAL inside
-    from miea.model import Graph, new_id
+    from miea_mem.model import Graph, new_id
     pg = mem._resolve("Postgres")
     child = Graph(id=new_id(), name="PG internals", parent_node_id=pg.id)
     mem.graphs[child.id] = child

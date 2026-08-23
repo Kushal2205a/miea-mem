@@ -2,9 +2,9 @@
 
 import pytest
 
-from miea.core import Memory
-from miea.guide import GUIDE, register_guide_resource
-from miea.store import Store
+from miea_mem.core import Memory
+from miea_mem.guide import GUIDE, register_guide_resource
+from miea_mem.store import Store
 
 
 @pytest.fixture()
@@ -65,7 +65,7 @@ async def test_guide_resource_registered(tmp_path):
 
 async def test_reflect_prompt_registered(tmp_path):
     from mcp.server.mcpserver import MCPServer
-    from miea.guide import register_guide_resource
+    from miea_mem.guide import register_guide_resource
 
     m = MCPServer("t")
     register_guide_resource(m)

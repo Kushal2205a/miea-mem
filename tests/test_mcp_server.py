@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from miea import mcp_server as srv
-from miea.core import Memory
-from miea.store import Store
+from miea_mem import mcp_server as srv
+from miea_mem.core import Memory
+from miea_mem.store import Store
 
 
 @pytest.fixture()
@@ -53,7 +53,7 @@ async def test_read_tier_lists_only_read_tools(ws):
 
 async def test_write_tier_adds_tools_and_they_work(ws):
     srv._state["tier"] = "write"
-    from miea.mcp_server import _register_write_tools
+    from miea_mem.mcp_server import _register_write_tools
 
     _register_write_tools()
     try:
@@ -83,7 +83,7 @@ async def test_write_tier_adds_tools_and_they_work(ws):
 
 async def test_idempotent_link(ws):
     srv._state["tier"] = "write"
-    from miea.mcp_server import _register_write_tools
+    from miea_mem.mcp_server import _register_write_tools
 
     _register_write_tools()
     a1 = await _call("link", {"source": "Postgres",
