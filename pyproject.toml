@@ -16,8 +16,8 @@ dependencies = [
 semantic = ["sentence-transformers>=2.0"]
 
 [project.scripts]
-miea = "miea.cli:main"
-miea-server = "miea.mcp_server:main"
+miea = "miea_mem.cli:main"
+miea-server = "miea_mem.mcp_server:main"
 
 [build-system]
 requires = ["uv_build>=0.12.2,<0.13.0"]
