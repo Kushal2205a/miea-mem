@@ -293,6 +293,9 @@ def _wakeup_snapshot(mem: Memory, budget: int = 250) -> dict:
 
 
 def main() -> None:
+    from .setup import setup_cmd  # local import avoids setup↔cli cycle
+
+    cli.add_command(setup_cmd)
     cli()
 
 
