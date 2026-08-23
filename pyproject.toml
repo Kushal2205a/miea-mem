@@ -12,6 +12,9 @@ dependencies = [
     "mcp>=2.0.0",
 ]
 
+[project.optional-dependencies]
+semantic = ["sentence-transformers>=2.0"]
+
 [project.scripts]
 agent-mem = "agent_mem.cli:main"
 agent-mem-server = "agent_mem.mcp_server:main"
