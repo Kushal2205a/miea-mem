@@ -54,17 +54,25 @@ Ask the salience test before any write:
 to repeat themselves?"**
 If no → don't write. Memory is not a transcript.
 
-Worth remembering, by type:
+Worth remembering, by type (choose deliberately — the type changes how the
+memory is treated):
 
 - `preference` — user identity & taste: themes, tools, OS, communication
   style, dislikes. Highest value; never verify; user wins.
-- `fact` (user-domain) — projects, goals, decisions, constraints: "building
-  kliae", "chose Python for miea".
+- `fact` — stable declarative truths: "Woxsen is in Telangana", "Postgres
+  uses MVCC".
+- `event` — something that HAPPENED at a time: experiences, incidents,
+  milestones ("capstone teammates free-rode", "migrated to uv in Aug 2026").
+  If the memory starts with "when/during/last year" or describes a moment,
+  it's an event, not a fact.
 - `procedure` — reusable success patterns: "deploy: uv sync then restart
   service". Only if it worked and will recur.
-- `event` — dated context: "migrated to uv on 2026-08-23".
-- `claim` — world facts ("X causes Y"): lowest trust; write unverified, let
-  `verify()` annotate them later.
+- `claim` — world facts that could be checked ("X causes Y"): lowest trust;
+  write unverified, let `verify()` annotate them later.
+
+Always tag nodes with category keywords (food, university, tool, person,
+project) — tags are how future keyword searches find memories whose labels
+don't contain the query words.
 
 NOT worth remembering:
 

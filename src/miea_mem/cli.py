@@ -104,13 +104,23 @@ def link(ctx: click.Context, source: str, verb: str, target: str):
 @cli.command()
 @click.argument("label")
 @click.option("--content", default="")
-@click.option("--type", "type_", default="fact")
+@click.option("--type", "type_", default="fact",
+              type=click.Choice(["fact", "preference", "procedure", "event",
+                                 "claim", "anchor"]))
 @click.option("--under-graph", default=None)
+@click.option("--tags", default="", help="Comma-separated category keywords.")
 @click.pass_context
 def add(ctx: click.Context, label: str, content: str, type_: str,
-        under_graph: str | None):
-    """Create a node."""
+        under_graph: str | None, tags: str):
+    """Create a node (fact/preference/procedure/event/claim)."""
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     n = _mem(ctx.obj["root"]).create_node(label, content, type_, under_graph)
+    if tag_list:
+        n.tags = tag_list
+        from .model import now_iso
+        n.updated_at = now_iso()
+        _mem(ctx.obj["root"])._index_node(n)
+        _mem(ctx.obj["root"]).store.save_node(n)
     click.echo(f"added [{n.label}] {n.id}")
 
 

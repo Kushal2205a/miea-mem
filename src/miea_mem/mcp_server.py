@@ -104,9 +104,22 @@ async def lca(refs: list[str]) -> str:
 def _register_write_tools() -> None:
     @mcp.tool()
     async def add(label: str, content: str = "", type: str = "fact",
-                 under_graph: str | None = None) -> str:
-        """(write tier) Create a memory node. Search first to avoid duplicates."""
+                  under_graph: str | None = None,
+                  tags: list[str] | None = None) -> str:
+        """(write tier) Create a memory node. Search first to avoid duplicates.
+
+        Choose type deliberately: fact = stable truth; event = something that
+        happened at a time (experiences, incidents); preference = user taste;
+        procedure = reusable how-to; claim = checkable world statement.
+        Always add category tags (food, university, tool...) — tags are how
+        future searches find this node."""
         n = _mem().create_node(label, content, type, under_graph)
+        if tags:
+            n.tags = list(tags)
+            from .model import now_iso
+            n.updated_at = now_iso()
+            _mem()._index_node(n)  # re-index with tags included
+            _mem().store.save_node(n)
         return f"created [{n.label}] {n.id}"
 
     @mcp.tool()

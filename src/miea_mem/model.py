@@ -1,9 +1,3 @@
-"""Core data model: Node, Edge, Graph, Workspace manifest.
-
-JSON files are the source of truth (kliae-inspired, one file per entity).
-These dataclasses are their in-memory mirror.
-"""
-
 from __future__ import annotations
 
 import json
@@ -23,11 +17,8 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# ---------------------------------------------------------------------------
+
 # Entities
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class Breadth:
     """Ranking signals. Order-only: never used to filter or evict."""
