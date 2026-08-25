@@ -7,3 +7,9 @@ target/
 .DS_Store
 .index/
 DESIGN.md
+
+issues_fixed.md
+
+bench/err_*.log
+bench/results_*.txt
+bench/results_*.md
