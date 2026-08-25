@@ -33,19 +33,26 @@ class Store:
 
     def fingerprint(self) -> tuple:
         # Cheap change detector: file count plus newest modification time.
-        # Both are needed; either alone misses some changes.
+        # Both are needed; either alone misses some changes. os.scandir is
+        # used because it reuses stat data from the directory read, which
+        # matters since this runs before every operation.
+        import os
+
         latest = 0.0
         count = 0
         for d in (self.nodes_dir, self.edges_dir, self.graphs_dir):
             if not d.exists():
                 continue
-            for p in d.iterdir():
-                if p.suffix == ".json":
-                    count += 1
-                    try:
-                        latest = max(latest, p.stat().st_mtime)
-                    except OSError:
-                        pass
+            with os.scandir(d) as entries:
+                for entry in entries:
+                    if entry.name.endswith(".json"):
+                        count += 1
+                        try:
+                            mtime = entry.stat().st_mtime
+                            if mtime > latest:
+                                latest = mtime
+                        except OSError:
+                            pass
         mf = self.root / "manifest.json"
         if mf.exists():
             count += 1
