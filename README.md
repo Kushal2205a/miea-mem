@@ -4,6 +4,21 @@ Graph memory for AI agents. Nodes hold facts. Edges name the relationship.
 Paths through the graph read as sentences: Kushal studied_at Woxsen
 University.
 
+```
+        search("university")
+             |
+             v
+   [* Kushal]
+     |  destinations:
+     |  [Biryani]          --likes-->
+     |  [Blade Runner]     --likes-->      read the signpost,
+     |  [Woxsen]           --studied_at--> pick a verb,
+     |  [Capstone story]   --experienced-> steer once.
+     |
+     +-------- steer ---------->  [* Woxsen University]
+                                       content found, answer ready
+```
+
 ## Install
 
 ```bash
@@ -57,7 +72,7 @@ search, adjacency lists for traversal, and a containment map for nesting.
 
 Reading a node returns its content and a signpost of destinations. Each
 destination carries the verb of the edge that reaches it and an access
-score. Scores order the list. Nothing is hidden: paging and scoped
+score. Scores order the list. Nothing is hidden, paging and scoped
 queries reach everything stored.
 
 Writing takes noun verb noun triples. Duplicate triples do nothing.
@@ -73,17 +88,8 @@ run it.
 - Workspace files are plain JSON, readable and editable by hand. They are
   the only source of truth. Derived indexes rebuild from them at any time.
 - Access counts rank results but never filter them. Every memory stays
-  reachable; low rank only costs latency.
+  reachable, low rank only costs latency.
 - Deletion is explicit. Nothing decays or disappears on its own.
-
-## Non-goals
-
-- Not a vector database. Semantic search is an optional cache over
-  keyword search, not the storage layer.
-- No team sync or cloud service. One workspace, local files, any number
-  of agents on the same machine pointing at it.
-- No automatic summarization. Parents link to children as references,
-  they do not describe them.
 
 ## CLI reference
 
