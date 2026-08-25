@@ -1,3 +1,6 @@
+# Data model. Defines the four entities (Node, Edge, Graph, Manifest)
+# and the dict translators used for JSON file persistence.
+
 from __future__ import annotations
 
 import json
@@ -17,12 +20,10 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-
 # Entities
+
 @dataclass
 class Breadth:
-    """Ranking signals. Order-only: never used to filter or evict."""
-
     access_count: int = 0
     traversal_count: int = 0  # times edges through this node were ridden
     last_accessed: str | None = None
@@ -34,9 +35,9 @@ class Node:
     label: str
     type: str = "fact"  # fact | preference | procedure | event | claim | anchor
     tags: list[str] = field(default_factory=list)
-    content: str = ""  # plain text; the LLM interprets at read time
-    child_graph_id: str | None = None  # containment overlay
-    epistemic_status: str = "unverifiable"  # see DESIGN.md Epistemics
+    content: str = ""  # plain text, the LLM interprets at read time
+    child_graph_id: str | None = None
+    epistemic_status: str = "unverifiable"
     breadth: Breadth = field(default_factory=Breadth)
     created_at: str = field(default_factory=now_iso)
     updated_at: str = field(default_factory=now_iso)
@@ -47,14 +48,13 @@ class Edge:
     id: str
     source_id: str
     target_id: str
-    verb: str  # active form; passive derivable ("teaches" / "is-taught-by")
+    verb: str  # active form, passive derivable ("teaches" / "is-taught-by")
     created_at: str = field(default_factory=now_iso)
 
 
 @dataclass
 class Graph:
-    """A nested graph. The root graph has parent_node_id=None."""
-
+    # A nested graph. The root graph has parent_node_id=None.
     id: str
     name: str
     node_ids: set[str] = field(default_factory=set)
@@ -72,10 +72,7 @@ class Manifest:
     updated_at: str = field(default_factory=now_iso)
 
 
-# ---------------------------------------------------------------------------
-# Serialization — one JSON file per entity, flat and human-readable
-# ---------------------------------------------------------------------------
-
+# Persistence helpers
 
 def _write(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,6 +80,8 @@ def _write(path: Path, obj: dict) -> None:
     tmp.write_text(json.dumps(obj, indent=2))
     tmp.replace(path)  # atomic
 
+
+# Node translation
 
 def node_to_dict(n: Node) -> dict:
     return {
@@ -124,6 +123,8 @@ def node_from_dict(d: dict) -> Node:
     )
 
 
+# Edge translation
+
 def edge_to_dict(e: Edge) -> dict:
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -145,6 +146,8 @@ def edge_from_dict(d: dict) -> Edge:
     )
 
 
+# Graph translation
+
 def graph_to_dict(g: Graph) -> dict:
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -165,6 +168,8 @@ def graph_from_dict(d: dict) -> Graph:
         parent_node_id=d.get("parentNodeId"),
     )
 
+
+# Manifest translation
 
 def manifest_to_dict(m: Manifest) -> dict:
     return {
