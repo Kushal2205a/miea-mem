@@ -103,22 +103,26 @@ run it.
 ## Performance
 
 Timings on a Ryzen 7 laptop with NVMe storage, Linux, p50 over repeated
-runs, keyword search only. Rerun yourself with `uv run python bench/run.py
-1000 10000`; absolute numbers vary by machine, the ratios hold.
+runs, keyword search only. Workspaces use a realistic topology where
+fanout stays near the split cap. Rerun yourself with
+`uv run python bench/run.py 1000 10000`; absolute numbers vary by machine,
+the ratios hold.
 
 | Operation | 1,000 nodes | 10,000 nodes |
 |---|---|---|
-| cold load | 36 ms | 408 ms |
-| search | 4 ms | 45 ms |
-| land | 6 ms | 84 ms |
-| steer | 8 ms | 99 ms |
-| write triple | 2 ms | 2 ms |
+| cold load | 46 ms | 494 ms |
+| search | 5.2 ms | 52.6 ms |
+| land (anchor) | 7.2 ms | 82.6 ms |
+| steer | 7.3 ms | 81.0 ms |
+| write new triple | 7.1 ms | 77.9 ms |
+| write duplicate | 0.2 ms | 2.4 ms |
+| resident memory | 34 MB | 65 MB |
 
 Reads and writes stay fast because everything happens in memory and the
-files are written through. Cold load grows with file count since every
-entity is its own JSON file, which is the main limit of this design.
-Workspaces in the low tens of thousands of nodes feel instant, past that
-the startup cost is the thing to watch.
+files are written through. Cold load grows linearly with file count since
+every entity is its own JSON file, which is the main limit of this
+design. Workspaces in the tens of thousands of nodes stay usable, past
+that the startup cost is the thing to watch.
 
 ## CLI reference
 
