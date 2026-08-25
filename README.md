@@ -100,6 +100,24 @@ run it.
   stays reachable, low rank only costs latency.
 - Deletion is explicit. Nothing decays or disappears on its own.
 
+## Performance
+
+Timings on a laptop, p50 over repeated runs, keyword search only.
+
+| Operation | 1,000 nodes | 10,000 nodes |
+|---|---|---|
+| cold load | 36 ms | 408 ms |
+| search | 4 ms | 45 ms |
+| land | 6 ms | 84 ms |
+| steer | 8 ms | 99 ms |
+| write triple | 2 ms | 2 ms |
+
+Reads and writes stay fast because everything happens in memory and the
+files are written through. Cold load grows with file count since every
+entity is its own JSON file, which is the main limit of this design.
+Workspaces in the low tens of thousands of nodes feel instant, past that
+the startup cost is the thing to watch.
+
 ## CLI reference
 
 | Command | Purpose |
