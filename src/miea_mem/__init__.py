@@ -1,4 +1,4 @@
-"""miea: graph-based agent memory. Structure and pointers only."""
+# miea: graph-based agent memory. Structure and pointers only.
 
 from .core import Memory, Payload
 from .model import Edge, Graph, Manifest, Node
