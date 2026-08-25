@@ -11,9 +11,10 @@
 
 </div>
 
-mi∃a is graph memory for AI agents. Memories are noun verb noun triples
-stored as readable JSON files, one per node, edge and graph. The agent
-queries them over MCP and steers through the graph at read time. The
+mi∃a is graph memory for AI agents. A memory is a node holding a fact,
+connected to other nodes by named edges. Everything is stored as one
+readable JSON file per node, edge and graph. The agent queries them over
+MCP and steers through the graph at read time. The
 approach assumes the consuming LLM does the interpretation work well, so
 the storage layer stays dumb and cheap. It holds structure and pointers.
 
