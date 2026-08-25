@@ -1,9 +1,9 @@
-"""miea CLI: the shell door into the memory core."""
+# Command line interface. Thin wrappers over the core operations, one
+# command each.
 
 from __future__ import annotations
 
 import json
-import sys
 
 import click
 
@@ -15,17 +15,15 @@ def _mem(root: str) -> Memory:
     try:
         return Memory(root)
     except FileNotFoundError as e:
-        raise click.ClickException(
-            f"not a workspace: {root} ({e})"
-        ) from e
+        raise click.ClickException(f"not a workspace: {root} ({e})") from e
 
 
 @click.group()
-@click.option("--root", default=".", envvar="AGENT_MEM_ROOT",
+@click.option("--root", default=".", envvar="MIEA_ROOT",
               help="Workspace directory.")
 @click.pass_context
 def cli(ctx: click.Context, root: str):
-    """miea — graph-based agent memory."""
+    """miea: graph-based agent memory."""
     ctx.ensure_object(dict)
     ctx.obj["root"] = root
 
@@ -47,18 +45,17 @@ def init(name: str, root: str):
 @click.option("--limit", default=5)
 @click.pass_context
 def search(ctx: click.Context, query: str, limit: int):
-    """Find entry points (ranked)."""
-    mem = _mem(ctx.obj["root"])
-    for node, score in mem.search(query, limit=limit):
-        click.echo(f"({score:.2f}) [{node.label}] {node.type} — {node.id}")
+    """Find entry points by keyword, ranked."""
+    for node, score in _mem(ctx.obj["root"]).search(query, limit=limit):
+        click.echo(f"({score:.2f}) [{node.label}] {node.type} -- {node.id}")
 
 
 @cli.command()
 @click.argument("ref")
-@click.option("--page", default=0, help="Signpost page (TOP_K per page).")
+@click.option("--page", default=0, help="Signpost page, seven destinations each.")
 @click.pass_context
-def land(ctx: click.Context, ref: str, page: int = 0):
-    """Land on a node; print its rideable payload + signpost (use --page to walk it)."""
+def land(ctx: click.Context, ref: str, page: int):
+    """Read a node with its content and signpost."""
     click.echo(_mem(ctx.obj["root"]).land(ref, page=page).render())
 
 
@@ -67,7 +64,7 @@ def land(ctx: click.Context, ref: str, page: int = 0):
 @click.argument("destination")
 @click.pass_context
 def steer(ctx: click.Context, ref: str, destination: str):
-    """Ride one branch toward a signpost destination."""
+    """Move from ref to one of its signpost destinations."""
     click.echo(_mem(ctx.obj["root"]).steer(ref, destination).render())
 
 
@@ -76,7 +73,7 @@ def steer(ctx: click.Context, ref: str, destination: str):
 @click.argument("query")
 @click.pass_context
 def query_scoped(ctx: click.Context, graph_ref: str, query: str):
-    """Mediated deep dive within one subtree."""
+    """Deep dive inside one subtree."""
     for p in _mem(ctx.obj["root"]).query_scoped(graph_ref, query):
         click.echo(p.render())
         click.echo("---")
@@ -86,7 +83,7 @@ def query_scoped(ctx: click.Context, graph_ref: str, query: str):
 @click.argument("refs", nargs=-1, required=True)
 @click.pass_context
 def lca(ctx: click.Context, refs: tuple[str]):
-    """Lowest common ancestor of nodes."""
+    """Lowest common ancestor of two or more nodes."""
     click.echo(json.dumps(_mem(ctx.obj["root"]).lca_context(list(refs)), indent=2))
 
 
@@ -96,31 +93,34 @@ def lca(ctx: click.Context, refs: tuple[str]):
 @click.argument("target")
 @click.pass_context
 def link(ctx: click.Context, source: str, verb: str, target: str):
-    """Add a named edge: SOURCE --VERB--> TARGET (creates missing nodes)."""
-    e = _mem(ctx.obj["root"]).write_triple(source, verb, target, create_missing=True)
+    """Add a named edge SOURCE --VERB--> TARGET, creating missing nodes."""
+    e = _mem(ctx.obj["root"]).write_triple(source, verb, target,
+                                           create_missing=True)
     click.echo(f"linked: [{source}] --{e.verb}--> [{target}]")
 
 
 @cli.command()
 @click.argument("label")
 @click.option("--content", default="")
-@click.option("--type", "type_", default="fact",
+@click.option("--type", "type_",
               type=click.Choice(["fact", "preference", "procedure", "event",
-                                 "claim", "anchor"]))
+                                 "claim", "anchor"]),
+              default="fact")
 @click.option("--under-graph", default=None)
 @click.option("--tags", default="", help="Comma-separated category keywords.")
 @click.pass_context
 def add(ctx: click.Context, label: str, content: str, type_: str,
         under_graph: str | None, tags: str):
-    """Create a node (fact/preference/procedure/event/claim)."""
+    """Create a node."""
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     n = _mem(ctx.obj["root"]).create_node(label, content, type_, under_graph)
     if tag_list:
-        n.tags = tag_list
         from .model import now_iso
+        n.tags = tag_list
         n.updated_at = now_iso()
-        _mem(ctx.obj["root"])._index_node(n)
-        _mem(ctx.obj["root"]).store.save_node(n)
+        m = _mem(ctx.obj["root"])
+        m._index_node(n)
+        m.store.save_node(n)
     click.echo(f"added [{n.label}] {n.id}")
 
 
@@ -129,7 +129,7 @@ def add(ctx: click.Context, label: str, content: str, type_: str,
 @click.confirmation_option(prompt="Really delete?")
 @click.pass_context
 def forget(ctx: click.Context, ref: str):
-    """Explicit deletion of a node (and its subtree)."""
+    """Delete a node and its subtree."""
     removed = _mem(ctx.obj["root"]).forget(ref)
     click.echo(f"forgot {removed} node(s)")
 
@@ -138,7 +138,7 @@ def forget(ctx: click.Context, ref: str):
 @click.argument("ref")
 @click.pass_context
 def neighbors(ctx: click.Context, ref: str):
-    """Full local neighborhood (write-tier inspection)."""
+    """Show every edge touching a node."""
     for n in _mem(ctx.obj["root"]).neighbors(ref):
         arrow = f"--{n['verb']}-->" if n["direction"] == "out" else f"<--{n['verb']}--"
         click.echo(f"{arrow} [{n['other']}]")
@@ -149,35 +149,34 @@ def neighbors(ctx: click.Context, ref: str):
 @click.argument("target")
 @click.pass_context
 def placement(ctx: click.Context, source: str, target: str):
-    """Where to file a SOURCE→TARGET triple: as deep as it's true, no deeper."""
-    import json
+    """Suggest where to file a SOURCE to TARGET triple."""
     click.echo(json.dumps(
         _mem(ctx.obj["root"]).placement_hint(source, target), indent=2))
 
 
 @cli.command("verify")
 @click.option("--limit", default=None, type=int,
-              help="Max claims to check this run.")
+              help="Maximum claims to check this run.")
 @click.option("--verifier", default="null",
               type=click.Choice(["null", "serp"]),
-              help="null: mark unverifiable (offline). serp: search-engine "
-                   "verdict via AGENT_MEM_SEARCH_CMD.")
+              help="null marks everything unverifiable. serp uses the "
+                   "command in MIEA_SEARCH_CMD.")
 @click.pass_context
 def verify(ctx: click.Context, limit: int | None, verifier: str):
-    """Run the epistemic annotation pass over pending world-claims."""
-    from .epistemics import EpistemicPass, NullVerifier, make_serp_verifier
-    import json
+    """Run the epistemic annotation pass over pending world claims."""
     import os
     import shlex
     import subprocess
 
+    from .epistemics import EpistemicPass, NullVerifier, make_serp_verifier
+
     if verifier == "serp":
-        cmd = os.environ.get("AGENT_MEM_SEARCH_CMD")
+        cmd = os.environ.get("MIEA_SEARCH_CMD")
         if not cmd:
             raise click.ClickException(
-                "set AGENT_MEM_SEARCH_CMD='<query placeholder supported>' "
-                "to a command that takes the query and prints JSON "
-                "[{title: ...}, ...]")
+                "set MIEA_SEARCH_CMD to a command that takes a query and "
+                'prints JSON like [{"title": "..."}]. Use {q} as the '
+                "query placeholder.")
 
         def search_fn(q: str) -> list[dict]:
             argv = [part.replace("{q}", q) for part in shlex.split(cmd)]
@@ -188,6 +187,7 @@ def verify(ctx: click.Context, limit: int | None, verifier: str):
         v = make_serp_verifier(search_fn)
     else:
         v = NullVerifier()
+
     report = EpistemicPass(_mem(ctx.obj["root"]), v).run(limit=limit)
     click.echo(json.dumps(report, indent=2) or "[]")
 
@@ -195,107 +195,89 @@ def verify(ctx: click.Context, limit: int | None, verifier: str):
 @cli.command("provenance")
 @click.pass_context
 def provenance(ctx: click.Context):
-    """Audit: which claim nodes lack a provenance edge."""
-    import json
+    """List claim nodes without a provenance edge."""
     click.echo(json.dumps(
         _mem(ctx.obj["root"]).provenance_report(), indent=2))
 
 
 @cli.command()
-@click.option("--tokens", default=250, help="Rough token budget for the snapshot.")
+@click.option("--tokens", default=250,
+              help="Approximate token budget for the snapshot.")
 @click.pass_context
 def wakeup(ctx: click.Context, tokens: int):
-    """Session-start snapshot: who the user is, hot preferences, recent
-    projects. For custom-agent builders: run this at session start and
-    inject stdout into context — push-style recall without hooks support."""
-    import json
-
+    """Print a session-start snapshot of who the user is and what matters.
+    Custom agents can inject this output at session start."""
     mem = _mem(ctx.obj["root"])
-    snapshot = _wakeup_snapshot(mem, budget=tokens)
-    click.echo(json.dumps(snapshot, indent=2))
+    click.echo(json.dumps(_wakeup_snapshot(mem, tokens), indent=2))
 
 
-def _wakeup_snapshot(mem: Memory, budget: int = 250) -> dict:
-    """Build the identity/preferences/projects snapshot.
-
-    Selection is pure structure: user-node edges by breadth×recency, then
-    top breadth nodes overall. Budget trims in that priority order.
-    """
-    # find the user node: prefer anchors with provenance-verb in-edges
-    # (e.g. [Kushal] receiving user_asserts), else most-connected node
-    from collections import Counter as C
+def _wakeup_snapshot(mem: Memory, budget: int) -> dict:
+    # Finds the user as the source of most provenance edges, then lists
+    # their neighbors grouped by verb, ranked, then recent nodes. Trims to
+    # roughly four characters per token against the budget.
+    from collections import Counter
 
     from .epistemics import PROVENANCE_VERBS
 
-    prov_in = C()
-    all_in = C()
+    prov_in = Counter()
+    all_in = Counter()
     for e in mem.edges.values():
         all_in[e.target_id] += 1
         if e.verb in PROVENANCE_VERBS:
-            prov_in[e.source_id] += 1  # asserter SENDS user_asserts
+            prov_in[e.source_id] += 1
+
+    user_id = None
     if prov_in:
-        # the asserter of most provenance edges is the user
         user_id = max(prov_in, key=lambda k: (prov_in[k], all_in.get(k, 0)))
     elif all_in:
         user_id = max(all_in, key=lambda k: all_in[k])
-    else:
-        user_id = None
 
-    lines: list[str] = []
     sections: list[tuple[str, list[str]]] = []
-
     if user_id:
         user = mem.nodes[user_id]
-        sections.append(("USER", [f"{user.label} — {user.content}".strip(" —")]))
+        sections.append(("USER",
+                         [f"{user.label} {user.content}".strip()]))
 
-        # neighbors of the user grouped by verb, ranked by breadth
-        dests = mem._all_destinations(user)
         grouped: dict[str, list[str]] = {}
-        for d in sorted(dests, key=lambda x: x.score, reverse=True):
+        for d in sorted(mem._all_destinations(user),
+                        key=lambda x: x.score, reverse=True):
             n = mem.nodes.get(d.node_id)
             if not n:
                 continue
-            verb = d.verb or "related"
-            entry = f"{n.label}" + (f" ({n.content[:60]})" if n.content else "")
-            grouped.setdefault(verb, []).append(entry)
+            entry = n.label + (f" ({n.content[:60]})" if n.content else "")
+            grouped.setdefault(d.verb or "related", []).append(entry)
         for verb, items in grouped.items():
             sections.append((verb.upper(), items))
 
-        # recent projects/events by updatedAt
         dated = sorted(
             (n for n in mem.nodes.values()
              if n.id != user_id and n.type in ("fact", "event")),
             key=lambda n: n.updated_at or "", reverse=True)[:3]
-        recent = [
-            f"{n.label} ({(n.updated_at or '')[:10]})" for n in dated
-            if all(n.label not in it for _, items in sections[1:] for it in items)
-        ]
+        listed = {it for _, items in sections[1:] for it in items}
+        recent = [f"{n.label} ({(n.updated_at or '')[:10]})"
+                  for n in dated if n.label not in listed]
         if recent:
             sections.append(("RECENT", recent))
 
-    # trim to rough token budget (~4 chars/token), priority = section order
     used = 0
-    out_sections = []
+    kept_sections: list[tuple[str, list[str]]] = []
     for title, items in sections:
         kept = []
-        for it in items:
-            cost = len(it) // 4 + 6
+        for item in items:
+            cost = len(item) // 4 + 6
             if used + cost > budget:
                 break
-            kept.append(it)
+            kept.append(item)
             used += cost
         if kept:
-            out_sections.append((title, kept))
+            kept_sections.append((title, kept))
         if used >= budget:
             break
 
-    text_parts = []
-    for title, items in out_sections:
-        text_parts.append(f"## {title}\n" + "\n".join(f"- {i}" for i in items))
-    text = "\n\n".join(text_parts)
-
+    parts = [f"## {title}\n" + "\n".join(f"- {i}" for i in items)
+             for title, items in kept_sections]
     return {
-        "text": text,
+        "text": "\n\n".join(parts),
         "approx_tokens": used,
         "budget": budget,
         "hint": "Inject this at session start; refresh per prompt via search.",
@@ -303,11 +285,7 @@ def _wakeup_snapshot(mem: Memory, budget: int = 250) -> dict:
 
 
 def main() -> None:
-    from .setup import setup_cmd  # local import avoids setup↔cli cycle
+    from .setup import setup_cmd  # local import avoids setup and cli cycle
 
     cli.add_command(setup_cmd)
     cli()
-
-
-if __name__ == "__main__":
-    main()
