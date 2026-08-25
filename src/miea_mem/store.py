@@ -1,15 +1,6 @@
-"""Workspace persistence: JSON files on disk <-> flat dicts in memory.
-
-Layout:
-    <workspace>/
-    ├── manifest.json
-    ├── nodes/<id>.json
-    ├── edges/<id>.json
-    └── graphs/<id>.json
-
-Files are written atomically. The store is the ONLY reader/writer — nobody
-greps raw files.
-"""
+# File storage. Reads and writes every node, edge and graph as its own
+# JSON file under the workspace directory. Atomic writes. This is the
+# only module that touches the files.
 
 from __future__ import annotations
 
@@ -34,8 +25,6 @@ from .model import (
 
 
 class Store:
-    """Owns the workspace directory. Thin: just file I/O for entities."""
-
     def __init__(self, root: str | Path):
         self.root = Path(root).expanduser().resolve()
         self.nodes_dir = self.root / "nodes"
@@ -43,7 +32,8 @@ class Store:
         self.graphs_dir = self.root / "graphs"
 
     def fingerprint(self) -> tuple:
-        """Cheap workspace-change detector: (file count, max mtime)."""
+        # Cheap change detector: file count plus newest modification time.
+        # Both are needed; either alone misses some changes.
         latest = 0.0
         count = 0
         for d in (self.nodes_dir, self.edges_dir, self.graphs_dir):
@@ -61,8 +51,6 @@ class Store:
             count += 1
             latest = max(latest, mf.stat().st_mtime)
         return (count, round(latest, 3))
-
-    # -- creation ------------------------------------------------------------
 
     def init_workspace(self, name: str = "Memory") -> Manifest:
         self.nodes_dir.mkdir(parents=True, exist_ok=True)
@@ -95,8 +83,6 @@ class Store:
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(manifest_to_dict(m), indent=2))
         tmp.replace(path)
-
-    # -- entities ------------------------------------------------------------
 
     def save_node(self, n: Node) -> None:
         from .model import _write
