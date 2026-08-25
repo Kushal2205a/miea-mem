@@ -11,12 +11,6 @@
 
 </div>
 
-<div align="center">
-
-![miea graph memory in motion](demo/waterslide.mp4)
-
-</div>
-
 mi∃a is graph memory for AI agents. A memory is a node holding a fact,
 connected to other nodes by named edges. Everything is stored as one
 readable JSON file per node, edge and graph. The agent queries them over
@@ -98,12 +92,12 @@ run it.
 
 ## Design rules
 
-- The consuming agent does all interpretation. This package just stores
+- The consuming agent does all interpretation. This package stores
   structure and pointers.
 - Workspace files are plain JSON, readable and editable by hand. They are
   the only source of truth. Derived indexes rebuild from them at any time.
-- How often a memory has been read decides the order of results. It never
-  filters them. Every memory stays reachable, low rank only costs latency.
+- Access counts rank results without ever filtering them. Every memory
+  stays reachable, low rank only costs latency.
 - Deletion is explicit. Nothing decays or disappears on its own.
 
 ## Performance
@@ -132,26 +126,32 @@ vectors are compared one by one.
 
 Cold load grows linearly with file count since every entity is its own
 JSON file, which is the main limit of this design. The numbers above come
-from a 10,000 node workspace. That size runs comfortably. Bigger ones
-slow down at startup first.
+from a 10,000 node workspace. Workspaces that size stay comfortable,
+bigger ones slow down at startup first.
 
 
 ## CLI reference
 
-The commands you will touch most.
+| Command | Purpose |
+|---|---|
+| `miea setup` | interactive workspace setup |
+| `miea init NAME` | create an empty workspace |
+| `miea search QUERY` | find entry points, ranked |
+| `miea land REF` | read a node with its signpost |
+| `miea steer REF DEST` | move along an edge |
+| `miea query-scoped GRAPH QUERY` | search inside one subtree |
+| `miea lca A B` | lowest common ancestor of nodes |
+| `miea add LABEL` | create a node |
+| `miea link A VERB B` | add a named edge |
+| `miea wakeup` | session-start snapshot for agent context |
+| `miea placement A B` | suggest where a triple belongs |
+| `miea verify` | check pending claims against search results |
+| `miea provenance` | audit claims without provenance |
+| `miea forget REF` | delete a node |
 
-```bash
-miea search "what should I look at first"
-miea land Kushal
-miea link Postgres persists_with WAL
-miea verify
-```
-
-The full command list, including wakeup, placement, provenance and
-forget, lives in [SETUP.md](SETUP.md). MCP tools mirror these operations
-under two tiers. Readers get search, land, steer, scoped queries and LCA.
-Writers also get add, link, forget, neighbors, placement, verify and
-provenance.
+MCP tools mirror these operations under two tiers. Readers get search,
+land, steer, scoped queries and LCA. Writers also get add, link, forget,
+neighbors, placement, verify and provenance.
 
 ## Development
 
