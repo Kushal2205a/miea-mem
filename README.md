@@ -7,12 +7,7 @@
 <div align="center">
 
 [![PyPI](https://img.shields.io/pypi/v/miea-mem)](https://pypi.org/project/miea-mem/)
-[![Python](https://img.shields.io/pypi/pyversions/miea-mem)](https://pypi.org/project/miea-mem/)
-[![Tests](https://github.com/Kushal2205a/miea-mem/actions/workflows/test.yml/badge.svg)](https://github.com/Kushal2205a/miea-mem/actions)
 [![License](https://img.shields.io/github/license/Kushal2205a/miea-mem)](LICENSE)
-[![Downloads](https://static.pepy.tech/badge/miea-mem)](https://pepy.tech/projects/miea-mem)
-[![Code size](https://img.shields.io/github/languages/code-size/Kushal2205a/miea-mem)](https://github.com/Kushal2205a/miea-mem)
-[![Last commit](https://img.shields.io/github/last-commit/Kushal2205a/miea-mem/main)](https://github.com/Kushal2205a/miea-mem/commits/main)
 
 </div>
 
@@ -63,9 +58,9 @@ A landed node looks like this.
   first: 2026-08-23
   epistemic: unverifiable
   destinations:
-    [Biryani] --likes--> (score 2.00)
-    [Blade Runner 2049] --likes--> (score 2.00)
-    [Woxsen University 2022-2026] --studied_at--> (score 2.69)
+    [Biryani] <--likes-- (score 2.00)
+    [Blade Runner 2049] <--likes-- (score 2.00)
+    [Woxsen University 2022-2026] <--studied_at-- (score 2.69)
 ```
 
 You can also drive it from the terminal.
@@ -80,8 +75,8 @@ miea --root ~/Documents/my_memory search relational
 ## How it works
 
 Storage is one JSON file per node, edge and graph. On startup these load
-into flat dicts plus three derived indexes, word counts for keyword
-search, adjacency lists for traversal, and a containment map for nesting.
+into flat dicts plus three derived indexes which are word counts for keyword search,
+adjacency lists for traversal, and a containment map for nesting.
 
 Reading a node returns its content and a signpost of destinations. Each
 destination carries the verb of the edge that reaches it and an access
