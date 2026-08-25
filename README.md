@@ -102,7 +102,9 @@ run it.
 
 ## Performance
 
-Timings on a laptop, p50 over repeated runs, keyword search only.
+Timings on a Ryzen 7 laptop with NVMe storage, Linux, p50 over repeated
+runs, keyword search only. Rerun yourself with `uv run python bench/run.py
+1000 10000`; absolute numbers vary by machine, the ratios hold.
 
 | Operation | 1,000 nodes | 10,000 nodes |
 |---|---|---|
