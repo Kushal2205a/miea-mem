@@ -1,16 +1,6 @@
-"""Semantic layer: embeddings as derived cache — never truth.
-
-Activated when scale/paraphrase-recall demands it (see DESIGN.md Design
-Principle 2: "No embeddings. Not yet." — 'yet' arrived the first time an
-agent failed to match 'food' ↔ 'Biryani').
-
-Design constraints:
-- Vectors live in a sidecar index (<workspace>/.index/vectors.json), never in
-  the entity files; rebuildable at any time from nodes.
-- Local embedding model, no API calls.
-- Graceful degradation: without a model installed, Memory.search() behaves
-  exactly as before (pure FTS).
-"""
+# Semantic search. Embeds nodes with a pluggable model, stores vectors
+# in a sidecar index file, and fuses vector results with keyword ranks.
+# Optional: without an embedder the system falls back to keyword search.
 
 from __future__ import annotations
 
@@ -24,16 +14,13 @@ from .model import Node
 
 
 class Embedder(Protocol):
-    """Minimal embedding interface; any local model can satisfy this."""
-
+    # Any object with a dim attribute and an embed method qualifies.
     dim: int
 
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
 class NullEmbedder:
-    """Always unavailable — keeps Memory fully offline-capable."""
-
     dim = 0
 
     def embed(self, texts: list[str]) -> list[list[float]]:
@@ -41,11 +28,8 @@ class NullEmbedder:
 
 
 def try_load_embedder() -> Embedder | None:
-    """Find an installed local embedding backend; None if absent.
-
-    Preference order: sentence-transformers (nomic / minilm) — heavy dep,
-    kept opt-in via [project.optional-dependencies] semantic.
-    """
+    # Probe for sentence-transformers. Returns None when absent so callers
+    # can degrade to keyword-only search.
     try:
         from sentence_transformers import SentenceTransformer  # type: ignore
     except ImportError:
@@ -57,7 +41,6 @@ def try_load_embedder() -> Embedder | None:
             return _STEmbedder(model)
         except Exception:
             continue
-    # fall back to whatever small default is cached locally
     try:
         model = SentenceTransformer("all-MiniLM-L6-v2")
         return _STEmbedder(model)
@@ -76,7 +59,7 @@ class _STEmbedder:
 
 
 def node_text(n: Node) -> str:
-    """What gets embedded for a node — label weighted by repetition."""
+    # Label appears twice to weight it strongest in the embedding.
     parts = [n.label, n.label, n.type, " ".join(n.tags)]
     if n.content:
         parts.append(n.content[:500])
@@ -91,7 +74,8 @@ def cosine(a: list[float], b: list[float]) -> float:
 
 
 class VectorIndex:
-    """Sidecar store: node_id → vector. Rebuildable, disposable."""
+    # Sidecar store of node_id to vector. Lives in .index/vectors.json,
+    # is disposable, and rebuilds from nodes at any time.
 
     def __init__(self, workspace_root: Path, embedder: Embedder):
         self.embedder = embedder
@@ -115,7 +99,6 @@ class VectorIndex:
         tmp.replace(self.path)
 
     def ensure_node(self, node: Node) -> None:
-        """Embed node if missing/stale. Cheap check: presence only."""
         if node.id not in self.vectors:
             self.vectors[node.id] = self.embedder.embed(
                 [node_text(node)])[0]
@@ -132,7 +115,8 @@ class VectorIndex:
         self.vectors.pop(node_id, None)
 
     def query(self, text: str, k: int = 10) -> list[tuple[str, float]]:
-        """Top-k (node_id, cosine) for a query string."""
+        # Brute force cosine against every stored vector. Fast enough
+        # for thousands of nodes; swap for ANN only if that changes.
         if not self.vectors:
             return []
         qv = self.embedder.embed([text])[0]
@@ -145,7 +129,11 @@ class VectorIndex:
 
 def rrf_fuse(rank_lists: list[list[str]], k: int = 60,
              top: int = 10) -> list[tuple[str, float]]:
-    """Reciprocal Rank Fusion across result lists (id-ordered best-first)."""
+    # Reciprocal Rank Fusion. Each list votes 1/(k+position) per item;
+    # items present in several lists stack their votes. Rank positions
+    # are used instead of raw scores because the two methods score on
+    # incomparable scales.
+
     scores: dict[str, float] = {}
     for ranks in rank_lists:
         for pos, nid in enumerate(ranks):
