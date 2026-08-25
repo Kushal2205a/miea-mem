@@ -1,17 +1,27 @@
+<div align="center">
+
 # mi∃a
+
+</div>
+
+<div align="center">
 
 [![PyPI](https://img.shields.io/pypi/v/miea-mem)](https://pypi.org/project/miea-mem/)
 [![Python](https://img.shields.io/pypi/pyversions/miea-mem)](https://pypi.org/project/miea-mem/)
 [![Tests](https://github.com/Kushal2205a/miea-mem/actions/workflows/test.yml/badge.svg)](https://github.com/Kushal2205a/miea-mem/actions)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/github/license/Kushal2205a/miea-mem)](LICENSE)
+[![Downloads](https://static.pepy.tech/badge/miea-mem)](https://pepy.tech/projects/miea-mem)
+[![Code size](https://img.shields.io/github/languages/code-size/Kushal2205a/miea-mem)](https://github.com/Kushal2205a/miea-mem)
+[![Last commit](https://img.shields.io/github/last-commit/Kushal2205a/miea-mem/main)](https://github.com/Kushal2205a/miea-mem/commits/main)
 
-Graph memory for AI agents, stored as plain JSON files and queried over
-MCP. No embedding pipeline, no summaries. Structure and pointers only,
-the consuming agent does the interpreting.
+</div>
 
-Other memory tools extract facts into vector databases and pre-compute
-digests. This one stores noun verb noun triples as readable JSON and
-serves them back through a signpost the agent steers along at read time.
+mi∃a is graph memory for AI agents. Memories are noun verb noun triples
+stored as readable JSON files, one per node, edge and graph. The agent
+queries them over MCP and steers through the graph at read time. The
+approach assumes the consuming LLM does the interpretation work well, so
+the storage layer stays dumb and cheap. It holds structure and pointers.
+
 
 ## Install
 
