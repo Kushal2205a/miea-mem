@@ -114,7 +114,7 @@ def test_null_verifier_marks_unverifiable_and_user_domain_skipped(mem: Memory):
 
 
 def test_system_verbs_reserved_from_user_writes(mem: Memory):
-    with pytest.raises(ValueError, match="system-reserved"):
+    with pytest.raises(ValueError, match="reserved for the verify pass"):
         mem.write_triple("flat earth", "contradicted_by", "NASA",
                          create_missing=True)
 
