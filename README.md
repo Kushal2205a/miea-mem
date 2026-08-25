@@ -132,26 +132,20 @@ bigger ones slow down at startup first.
 
 ## CLI reference
 
-| Command | Purpose |
-|---|---|
-| `miea setup` | interactive workspace setup |
-| `miea init NAME` | create an empty workspace |
-| `miea search QUERY` | find entry points, ranked |
-| `miea land REF` | read a node with its signpost |
-| `miea steer REF DEST` | move along an edge |
-| `miea query-scoped GRAPH QUERY` | search inside one subtree |
-| `miea lca A B` | lowest common ancestor of nodes |
-| `miea add LABEL` | create a node |
-| `miea link A VERB B` | add a named edge |
-| `miea wakeup` | session-start snapshot for agent context |
-| `miea placement A B` | suggest where a triple belongs |
-| `miea verify` | check pending claims against search results |
-| `miea provenance` | audit claims without provenance |
-| `miea forget REF` | delete a node |
+The commands you will touch most.
 
-MCP tools mirror these operations under two tiers. Readers get search,
-land, steer, scoped queries and LCA. Writers also get add, link, forget,
-neighbors, placement, verify and provenance.
+```bash
+miea search "what should I look at first"
+miea land Kushal
+miea link Postgres persists_with WAL
+miea verify
+```
+
+The full command list, including wakeup, placement, provenance and
+forget, lives in [SETUP.md](SETUP.md). MCP tools mirror these operations
+under two tiers. Readers get search, land, steer, scoped queries and LCA.
+Writers also get add, link, forget, neighbors, placement, verify and
+provenance.
 
 ## Development
 

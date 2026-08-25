@@ -5,17 +5,11 @@ agent.
 
 ## 1. Install
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
-
 ```bash
-# from a clone of this repo (PyPI release coming):
-uv tool install --with sentence-transformers /path/to/miea
+uv tool install miea-mem
 ```
 
-- `--with sentence-transformers` adds **semantic search** (paraphrase recall,
-  ~90MB model auto-downloaded once on first use, cached locally, offline
-  after). Skip it for a lean keyword-only install.
-- After changing the repo: `uv tool install --force ...`
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 
 Verify:
 
@@ -41,8 +35,8 @@ Non-interactive equivalent:
 miea setup --root ~/Documents/my_memory --name "Your Name"
 ```
 
-Optional but recommended: `git init` inside the workspace so memory changes
-become diffable commits.
+Setup initializes git history in the workspace automatically, so memory
+changes become diffable, revertable commits from day one.
 
 ## 3. Use it from the terminal
 
@@ -51,7 +45,7 @@ alias mie="miea --root ~/Documents/my_memory"
 
 mie add "Postgres" --content "relational database"
 mie link Postgres persists_with WAL        # creates missing nodes
-mie search relational                      # hybrid keyword+semantic
+mie search relational                      # ranked entry points
 mie land Postgres                          # payload + signpost
 mie steer Postgres WAL                     # ride one edge
 mie wakeup                                 # session-start snapshot (JSON)
@@ -72,7 +66,7 @@ config. For OpenCode (`~/.config/opencode/opencode.jsonc`):
   "mcp": {
     "my-memory": {
       "type": "local",
-      "command": ["~/.local/bin/miea-server",
+      "command": ["/home/USER/.local/share/uv/tools/miea-mem/bin/miea-server",
                   "--root", "~/Documents/my_memory",
                   "--tier", "write"],
       "enabled": true
