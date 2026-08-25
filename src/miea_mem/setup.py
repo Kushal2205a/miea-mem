@@ -1,8 +1,6 @@
-"""Setup wizard: `miea setup`.
-
-Prompted flow — workspace path, user name, agent detection, paste-ready MCP
-config. Never overwrites existing configs; merging is left to the user.
-"""
+# Setup wizard. Asks for a workspace path and the user name, creates the
+# workspace with a user anchor node, initializes git when available, and
+# prints an MCP config block for pasting into any agent.
 
 from __future__ import annotations
 
@@ -24,7 +22,7 @@ def _mcp_block(server_bin: str, root: str, tier: str = "write") -> str:
 
 
 def _detect_agents() -> list[tuple[str, Path]]:
-    """Known-agent config paths that exist on this machine."""
+    # Known agent config paths that exist on this machine.
     home = Path.home()
     known = [
         ("OpenCode", home / ".config/opencode/opencode.jsonc"),
@@ -36,13 +34,11 @@ def _detect_agents() -> list[tuple[str, Path]]:
 
 
 def _find_server_bin() -> str:
-    """Path to the installed miea-server executable."""
     from shutil import which
 
     found = which("miea-server")
     if found:
         return str(Path(found).resolve())
-    # uv tool default location
     fallback = Path.home() / ".local/bin/miea-server"
     if fallback.exists():
         return str(fallback)
@@ -56,7 +52,7 @@ def setup_cmd(root: str | None, name: str | None):
     """Interactive setup: create a workspace and print MCP config."""
     click.echo("miea setup\n" + "=" * 40)
 
-    # 1. workspace location
+    # Workspace location.
     if not root:
         default_root = Path.home() / "Documents" / "my-memory"
         root = click.prompt(
@@ -71,19 +67,20 @@ def setup_cmd(root: str | None, name: str | None):
     fresh = not store.exists()
     if fresh:
         manifest = store.init_workspace("Memory")
-        click.echo(f"✓ Workspace created at {root_path}")
+        click.echo(f"workspace created at {root_path}")
     else:
         manifest = store.load_manifest()
-        click.echo(f"• Using existing workspace at {root_path}")
+        click.echo(f"using existing workspace at {root_path}")
 
-    # 2. user name
+    # User name.
     if not name:
         name = click.prompt("Your name")
     assert name is not None
     name = name.strip()
 
-    # record the user node so wakeup()/provenance have an anchor from day one
-    existing = [n for n in mem_all_nodes(store) if n.label.lower() == name.lower()]
+    # User anchor node so wakeup and provenance work from day one.
+    existing = [n for n in store.all_nodes()
+                if n.label.lower() == name.lower()]
     if not existing:
         from .model import Node, new_id
 
@@ -94,15 +91,14 @@ def setup_cmd(root: str | None, name: str | None):
         assert g is not None
         g.node_ids.add(user.id)
         store.save_graph(g)
-        click.echo(f"✓ User node [{name}] created")
+        click.echo(f"user node [{name}] created")
 
-    # 3. git tracking (automatic when git is available)
+    # Git tracking. Automatic when git exists, silent skip otherwise.
     import shutil
     import subprocess
 
     if shutil.which("git") is None:
-        click.echo("• git not found — skipping version history "
-                   "(run `git init` here later if you want it)")
+        click.echo("git not found, skipping version history")
     elif not (root_path / ".git").exists():
         try:
             subprocess.run(["git", "init", "-q"], cwd=root_path, check=True)
@@ -115,48 +111,40 @@ def setup_cmd(root: str | None, name: str | None):
                      "GIT_AUTHOR_EMAIL": "miea@localhost",
                      "GIT_COMMITTER_NAME": name or "miea",
                      "GIT_COMMITTER_EMAIL": "miea@localhost"})
-            click.echo("✓ Git history initialized (memory changes are now "
-                       "diffable commits)")
+            click.echo("git history initialized")
         except subprocess.CalledProcessError:
-            click.echo("• git init failed — continuing without history")
+            click.echo("git init failed, continuing without history")
     else:
-        click.echo("• Git already tracks this workspace")
+        click.echo("git already tracks this workspace")
 
-    # 3. semantic search availability (informational only)
+    # Semantic search availability, informational only.
     try:
         from .semantic import try_load_embedder
 
         if try_load_embedder() is not None:
-            click.echo("✓ Semantic search available")
+            click.echo("semantic search available")
         else:
             click.echo(
-                "• Semantic search: model not installed — keyword search "
+                "semantic search off, model not installed. Keyword search "
                 "still works. Enable later with:\n"
                 "  uv tool install --force --with sentence-transformers "
-                "<repo>"
-            )
+                "<repo>")
     except Exception:
         pass
 
-    # 4. detected agents
+    # Detected agents and the paste block.
     server_bin = _find_server_bin()
     block = _mcp_block(server_bin, str(root_path))
     detected = _detect_agents()
     if detected:
         click.echo("\nDetected agents:")
         for agent_name, cfg in detected:
-            click.echo(f"  • {agent_name}: {cfg}")
-        click.echo(
-            "\nMerge this block into the config(s) you use "
-            "(not done automatically):")
+            click.echo(f"  {agent_name}: {cfg}")
+        click.echo("\nMerge this block into the config you use:")
 
-    click.echo("\nMCP config — paste into your agent's config file:\n")
+    click.echo("\nMCP config:\n")
     click.echo(block)
     click.echo(
         f"\nDone. Point any MCP client at {root_path}.\n"
-        "The workspace is empty — memory can only recall what was stored.\n"
-        'Seed it by telling your agent things: "remember that I love X".')
-
-
-def mem_all_nodes(store: Store):
-    return store.all_nodes()
+        "The workspace is empty. Memory can only recall what was stored,\n"
+        'so seed it by telling your agent things: "remember that I love X".')
