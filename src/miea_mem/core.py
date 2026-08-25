@@ -29,11 +29,23 @@ def _tokenize(text: str) -> list[str]:
     ]
 
 
+_ISO_CACHE: dict[str, float] = {}
+
+
 def _parse_iso(s: str | None) -> float | None:
+    # Parsing dates is hot inside signpost scoring, so parsed values are
+    # memoized. Timestamp strings rarely change once written.
     if not s:
         return None
+    cached = _ISO_CACHE.get(s)
+    if cached is not None:
+        return cached
     try:
-        return datetime.fromisoformat(s).timestamp()
+        ts = datetime.fromisoformat(s).timestamp()
+        if len(_ISO_CACHE) > 100_000:
+            _ISO_CACHE.clear()
+        _ISO_CACHE[s] = ts
+        return ts
     except ValueError:
         return None
 
@@ -127,6 +139,7 @@ class Memory:
         self.parent_of: dict[str, tuple[str, str | None]] = {}
         self._fts: dict[str, Counter] = {}
         self._dirty_maps: set[str] = set()
+        self._ts_cache: dict[str, float] = {}  # iso string to epoch seconds
 
         # Semantic layer. Optional. Absent embedder means keyword search only.
         self._vector_index: Any | None = None
@@ -147,6 +160,11 @@ class Memory:
 
         if self._vector_index is not None:
             self._vector_index.ensure_all(self.nodes)
+        self._fingerprint = self.store.fingerprint()
+
+    def _note_self_write(self) -> None:
+        # Our own writes change file mtimes. Without this, the next read
+        # would mistake them for an external writer and reload everything.
         self._fingerprint = self.store.fingerprint()
 
     # Loading
@@ -252,6 +270,9 @@ class Memory:
     # Signpost construction
 
     def _all_destinations(self, node: Node) -> list[Destination]:
+        import time as _time
+
+        now = _time.time()
         dests: list[Destination] = []
 
         # Neighbors reached by edges, both directions.
@@ -260,14 +281,14 @@ class Memory:
             other = self.nodes.get(e.target_id)
             if other:
                 dests.append(Destination(other.id, other.label, e.verb, "out",
-                                         self.breadth_score(other.id),
+                                         self.breadth_score(other.id, now),
                                          other.epistemic_status))
         for eid in self.in_edges.get(node.id, []):
             e = self.edges[eid]
             other = self.nodes.get(e.source_id)
             if other:
                 dests.append(Destination(other.id, other.label, e.verb, "in",
-                                         self.breadth_score(other.id),
+                                         self.breadth_score(other.id, now),
                                          other.epistemic_status))
 
         # Siblings through containment: members of our child graph, or of
@@ -281,7 +302,7 @@ class Memory:
                 if nid == node.id or nid not in self.nodes:
                     continue
                 dests.append(Destination(nid, self.nodes[nid].label, None,
-                                         "child", self.breadth_score(nid),
+                                         "child", self.breadth_score(nid, now),
                                          self.nodes[nid].epistemic_status))
 
         # One destination per node. Edge view wins over sibling view.
@@ -419,6 +440,7 @@ class Memory:
             node.breadth.access_count += 1
             node.breadth.last_accessed = now_iso()
             self.store.save_node(node)
+            self._note_self_write()
         return self._payload(node, include_edges=include_edges, page=page)
 
     def steer(self, ref: str, destination: str, *,
@@ -438,6 +460,7 @@ class Memory:
             n.breadth.traversal_count += 1
             n.breadth.last_accessed = now_iso()
             self.store.save_node(n)
+        self._note_self_write()
 
         payload = self._payload(nxt, include_edges=include_edges)
         payload.path_so_far = [f"[{node.label}]"]
@@ -469,6 +492,7 @@ class Memory:
             n.breadth.access_count += 1
             self.store.save_node(n)
             out.append(self._payload(n))
+        self._note_self_write()
         return out
 
     def lca_context(self, refs: list[str]) -> dict:
