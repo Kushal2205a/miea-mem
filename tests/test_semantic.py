@@ -61,7 +61,7 @@ def test_rrf_prefers_items_in_multiple_lists():
 
 
 def test_hybrid_finds_paraphrase(mem: Memory):
-    # 'food' shares an axis with biryani's content but NOT its tokens —
+    # 'food' shares an axis with biryani's content but not its tokens,
     # pure FTS would miss this; the vector leg must surface it.
     hits = mem.search("what food do I like")
     labels = [n.label for n, _ in hits]
