@@ -1,39 +1,34 @@
-"""Epistemics: async annotation, never admission control.
-
-Claims land as unverified; a pluggable verifier (SERP-level by design) annotates
-them afterward. The system only ever ADDS edges/status — it never deletes or
-refuses. Users write provenance; only the verifier writes corroboration.
-"""
+# Epistemics. Checks stored claims against search results and annotates
+# them with a status. Adds corroboration edges and source nodes. Never
+# deletes anything and never blocks writes. Some verbs are reserved so
+# user writes cannot fake corroboration.
 
 from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 from .model import Edge, Node, new_id, now_iso
 
-# Status values a claim node may carry.
 UNVERIFIED = "unverified"
 CORROBORATED = "corroborated"
 CONTRADICTED = "contradicted"
 CONTESTED = "contested"
 UNVERIFIABLE = "unverifiable"
 
-# Verbs reserved for the system — user/agent writes can never create these.
 CORROBORATED_BY = "corroborated_by"
 CONTRADICTED_BY = "contradicted_by"
 SOME_SOURCES_SAY = "some_sources_say"
 OTHER_SOURCES_SAY = "other_sources_say"
 
+# Reserved verbs: only the verify pass may create edges with these.
 SYSTEM_VERBS = frozenset({
     CORROBORATED_BY, CONTRADICTED_BY, SOME_SOURCES_SAY, OTHER_SOURCES_SAY,
 })
 
 PROVENANCE_VERBS = frozenset({"user_asserts", "agent_inferred", "source_says"})
 
-# Heuristic: claims about the checkable world vs. user-domain statements.
 _WORLD_HINTS = re.compile(
     r"\b(is|are|was|were|does|do|can|cannot|causes?|boosts?|improves?|"
     r"prevents?|proven|fact|actually|always|never)\b", re.IGNORECASE,
@@ -41,11 +36,8 @@ _WORLD_HINTS = re.compile(
 
 
 def classify_claim(text: str) -> str:
-    """Cheap structural classification — no LLM.
-
-    Returns 'world' (lookupable), 'user' (user-domain: never verified), or
-    'opaque' (nothing to look up).
-    """
+    # Structural check, no model involved. Returns world for statements
+    # that could be looked up, user for personal domain, opaque otherwise.
     if not text or len(text.split()) < 3:
         return "opaque"
     if _WORLD_HINTS.search(text):
@@ -55,31 +47,25 @@ def classify_claim(text: str) -> str:
 
 @dataclass
 class Verdict:
-    status: str                 # CORROBORATED / CONTRADICTED / CONTESTED / UNVERIFIABLE
-    sources: list[str]          # short source descriptors from the SERP
+    status: str         # corroborated / contradicted / contested / unverifiable
+    sources: list[str]  # short source descriptors from the search
 
 
 class Verifier(ABC):
-    """Pluggable lookup backend. Default impl hits a SERP; tests stub this."""
-
     @abstractmethod
     def verify(self, claim: str) -> Verdict: ...
 
 
 class NullVerifier(Verifier):
-    """Treats everything as unverifiable — offline default."""
-
+    # Offline default: marks everything unverifiable, touches no network.
     def verify(self, claim: str) -> Verdict:
         return Verdict(status=UNVERIFIABLE, sources=[])
 
 
 def make_serp_verifier(search_fn) -> Verifier:
-    """Wrap a search_fn(query) -> list[result-dicts] into a Verifier.
-
-    The search engine's own verdict is the signal (ranked results, snippets,
-    knowledge panels) — we never fetch site content. Agreement heuristic:
-    compare negation-bearing top results against the claim's polarity.
-    """
+    # Wraps search_fn(query) -> list of result dicts. Reads only the
+    # engine's own ranking and titles, never site content. Dispute
+    # counting over the top results decides the verdict.
 
     class SerpVerifier(Verifier):
         def verify(self, claim: str) -> Verdict:
@@ -97,8 +83,6 @@ def make_serp_verifier(search_fn) -> Verifier:
                 1 for t in titles
                 if re.search(r"\b(not|no|never|myth|false|misconception|"
                              r"debunk|wrong|actually)\b", t, re.IGNORECASE))
-            # >half of top results dispute → contradicted; any dispute of an
-            # undisputed claim → contested; else corroborated.
             if result_negated > len(titles) / 2 and not claim_negated:
                 return Verdict(status=CONTRADICTED, sources=titles)
             if result_negated and not claim_negated:
@@ -109,14 +93,13 @@ def make_serp_verifier(search_fn) -> Verifier:
 
 
 class EpistemicPass:
-    """Runs over unverified world-claims and annotates them."""
+    # Annotates pending unverified claims. Idempotent per node.
 
     def __init__(self, mem, verifier: Verifier):
         self.mem = mem
         self.verifier = verifier
 
     def pending(self) -> list[Node]:
-        """Unverified, lookupable claim nodes."""
         out = []
         for n in self.mem.nodes.values():
             if n.epistemic_status != UNVERIFIED:
@@ -127,12 +110,10 @@ class EpistemicPass:
         return out
 
     def run(self, limit: int | None = None) -> list[dict]:
-        """Annotate up to `limit` pending claims. Idempotent per node.
-
-        Never deletes anything: contradiction becomes typed edges pointing at
-        system-created source nodes; mixed evidence becomes plural-viewpoint
-        edges. Annotations carry an as-of date (truth has a shelf life).
-        """
+        # Checks up to limit pending claims and annotates them. Contradiction
+        # becomes contradicted_by edges to created source nodes. Mixed
+        # evidence becomes some_sources_say plus a balancing back edge.
+        # Annotations carry the check date because facts age.
         mem = self.mem
         checked_at = now_iso()
         report = []
@@ -165,7 +146,6 @@ class EpistemicPass:
                     mem.store.save_edge(edge)
                     made.append(src_node.id)
                 if verdict.status == CONTESTED and len(made) >= 2:
-                    # balance the record: other_sources_say back-references
                     back = Edge(id=new_id(), source_id=made[-1],
                                 target_id=node.id, verb=OTHER_SOURCES_SAY)
                     mem.edges[back.id] = back
