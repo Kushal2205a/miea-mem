@@ -96,7 +96,7 @@ def test_reindex_rebuilds_vectors(mem: Memory):
 def test_graceful_without_embedder(tmp_path):
     root = tmp_path / "ws"
     Store(root).init_workspace("T")
-    m = Memory(str(root))          # default auto → no model installed here?
+    m = Memory(str(root))          # default auto to no model installed here?
     # Either vector index is None (no model) or real; either way search works.
     m.create_node("Biryani")
     hits = m.search("biryani")     # exact term must always work

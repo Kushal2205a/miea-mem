@@ -97,7 +97,7 @@ def test_mixed_evidence_becomes_contested_with_plural_edges(mem: Memory):
 
 def test_null_verifier_marks_unverifiable_and_user_domain_skipped(mem: Memory):
     pref = mem.create_node("dark themes")
-    pref.epistemic_status = UNVERIFIED  # even if mislabeled…
+    pref.epistemic_status = UNVERIFIED  # even if mislabeled...
     mem.store.save_node(pref)
     claim = mem.create_node("weird claim", content="quantum woo does things",
                             type="claim")
@@ -107,7 +107,7 @@ def test_null_verifier_marks_unverifiable_and_user_domain_skipped(mem: Memory):
     report = EpistemicPass(mem, NullVerifier()).run()
     statuses = {r["status"] for r in report}
     assert statuses == {UNVERIFIABLE}
-    # user-domain node ("dark themes") isn't lookupable → stays out of the pass
+    # user-domain node ("dark themes") is not lookupable to stays out of the pass
     assert mem.nodes[pref.id].epistemic_status == UNVERIFIED
     # world claim got annotated by the (null) verifier
     assert mem.nodes[claim.id].epistemic_status == UNVERIFIABLE
@@ -219,7 +219,7 @@ def test_signpost_paging(mem: Memory):
 def test_placement_hint_same_domain_vs_cross_branch(mem: Memory, tmp_path):
     mem.create_node("Postgres")
     mem.create_node("WAL")
-    # same-domain pair → leaf level
+    # same-domain pair to leaf level
     hint = mem.placement_hint("Postgres", "WAL")
     assert "leaf" in hint["reason"]
 
@@ -234,10 +234,10 @@ def test_placement_hint_cross_branch_points_at_ancestor(mem: Memory):
     pg.child_graph_id = child.id
     wal = mem.create_node("WAL2", under_graph=child.id)
 
-    # WAL2 (under Postgres) vs MySQL — wait: use a node INSIDE Postgres's own
+    # WAL2 (under Postgres) vs MySQL, wait: use a node INSIDE Postgres's own
     # sibling branch so Postgres is genuinely the shared ancestor.
     mysql = mem.create_node("MySQL")
     mem.write_triple(mysql.label, "competes_with", "Postgres")
     hint = mem.placement_hint(wal.label, "Postgres")
-    # WAL2 is contained BY Postgres → direct ancestry, LCA is the node itself
+    # WAL2 is contained BY Postgres to direct ancestry, LCA is the node itself
     assert hint["suggest"].startswith("under [Postgres]")

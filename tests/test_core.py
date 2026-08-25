@@ -73,7 +73,7 @@ def test_write_triple_idempotent(mem: Memory):
 
 
 def test_lca_of_siblings(mem: Memory):
-    # B-trees and Vacuum tuning live in the same graph → graph is common ground
+    # B-trees and Vacuum tuning live in the same graph to graph is common ground
     ctx = mem.lca_context(["B-trees", "Vacuum tuning"])
     assert ctx["lca_kind"] == "graph"
     assert ctx["lca_name"] == "Test"
@@ -121,7 +121,7 @@ def test_breadth_order_only_never_filters(mem: Memory):
     hot = mem.breadth_score(mem._resolve("B-trees").id)
     cold = mem.breadth_score(mem._resolve("Vacuum tuning").id)
     assert hot > cold
-    # cold node still landable — rank affects order, never access
+    # cold node still landable, rank affects order, never access
     p = mem.land("Vacuum tuning", mark_access=False)
     assert p.node.label == "Vacuum tuning"
 
