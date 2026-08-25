@@ -29,22 +29,19 @@ def _tokenize(text: str) -> list[str]:
     ]
 
 
-_ISO_CACHE: dict[str, float] = {}
-
-
-def _parse_iso(s: str | None) -> float | None:
-    # Parsing dates is hot inside signpost scoring, so parsed values are
-    # memoized. Timestamp strings rarely change once written.
+def _parse_iso(s: str | None, cache: dict[str, float] | None = None) -> float | None:
+    # Parsing dates is hot inside signpost scoring. When a cache dict is
+    # passed it is used and filled; callers holding many nodes pass one.
     if not s:
         return None
-    cached = _ISO_CACHE.get(s)
-    if cached is not None:
-        return cached
+    if cache is not None:
+        hit = cache.get(s)
+        if hit is not None:
+            return hit
     try:
         ts = datetime.fromisoformat(s).timestamp()
-        if len(_ISO_CACHE) > 100_000:
-            _ISO_CACHE.clear()
-        _ISO_CACHE[s] = ts
+        if cache is not None:
+            cache[s] = ts
         return ts
     except ValueError:
         return None
@@ -235,7 +232,8 @@ class Memory:
         now = now or datetime.now(timezone.utc).timestamp()
         access = n.breadth.access_count + n.breadth.traversal_count
         recency_boost = 0.0
-        ts = _parse_iso(n.breadth.last_accessed) or _parse_iso(n.created_at)
+        ts = _parse_iso(n.breadth.last_accessed, self._ts_cache) or \
+            _parse_iso(n.created_at, self._ts_cache)
         if ts:
             age_days = max(0.0, (now - ts) / 86400)
             recency_boost = math.exp(-age_days / 14.0) * 2.0
@@ -587,6 +585,7 @@ class Memory:
         self._register_in_graph(edge.id, s.id, is_edge=True)
         self._mark_dirty(s.id)
         self._attach_provenance(edge, provenance, source=s, target=t)
+        self._note_self_write()
         return edge
 
     def _attach_provenance(self, edge: Edge, provenance: str | None,
@@ -628,6 +627,7 @@ class Memory:
         self.store.save_node(node)
         self.store.save_graph(g)
         self._mark_dirty(node.id)
+        self._note_self_write()
         return node
 
     def forget(self, ref: str, *, recursive: bool = True) -> int:
@@ -658,6 +658,7 @@ class Memory:
             self._vector_index.save()
         del self.nodes[node.id]
         self.store.delete_node(node.id)
+        self._note_self_write()
         return removed
 
     def delete_edge(self, edge_id: str) -> None:
