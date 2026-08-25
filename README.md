@@ -1,51 +1,122 @@
-# mi∃a
+# mi∫a
 
-**miea** — graph memory for AI agents. *You ∃ in your agent's memory.*
+Graph memory for AI agents. Nodes hold facts. Edges name the relationship.
+Paths through the graph read as sentences: Kushal studied_at Woxsen
+University.
 
-**Structure and pointers only** — all interpretation happens in the consuming
-agent's LLM at read time. No pre-computed summaries; embeddings only as an
-optional derived cache. Design notes: [DESIGN.md](./DESIGN.md) (local).
-
-## Model
-
-- **Nodes = nouns**, named content records
-- **Edges = verbs** (`persists_with`, `contradicts`, …) — traversal paths
-  concatenate into sentences: `[Postgres] --persists_with--> [WAL]`
-- **Nested graphs**: containment hierarchy; every node at any depth is a full
-  memory, not a folder
-- **Signposts**: parents list their children as ranked *references*
-  (label + breadth score), never generated summaries
-
-## Quick start
+## Install
 
 ```bash
-uv tool install --with sentence-transformers .   # from this repo
-miea setup                                       # wizard: path + name → MCP JSON
+uv tool install miea-mem
+
+# with semantic search (paraphrase recall, downloads a local model):
+uv tool install "miea-mem[semantic]"
 ```
 
-Or manually:
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+
+## Setup
 
 ```bash
-miea init MyMemory --root ~/Documents/my_memory
-miea --root ~/Documents/my_memory add Postgres --content "relational database"
-miea --root ~/Documents/my_memory link Postgres persists_with WAL
-miea --root ~/Documents/my_memory land Postgres      # rideable payload + signpost
-miea --root ~/Documents/my_memory steer Postgres WAL # one branch of the slide
+miea setup
 ```
 
-## Architecture
+The wizard asks for a workspace folder and your name, creates the
+workspace, initializes git history in it, and prints an MCP config block.
+Paste that block into any MCP client (OpenCode, Claude Code, Cursor) and
+restart the agent.
 
+## Usage
+
+Tell your agent things and it stores them:
+
+> remember that I like biryani
+
+Later, ask it questions:
+
+> what food do I like?
+
+Under the hood the agent runs `search` to find an entry node, reads its
+content and signpost with `land`, then follows named edges with `steer`
+until it has the answer.
+
+You can also drive it from the terminal:
+
+```bash
+miea --root ~/Documents/my-memory add Postgres --content "relational database"
+miea --root ~/Documents/my-memory link Postgres persists_with WAL
+miea --root ~/Documents/my-memory land Postgres
+miea --root ~/Documents/my_memory search relational
 ```
-JSON files (durable truth) → in-memory graph/indexes → agent via CLI/MCP
+
+## How it works
+
+Storage is one JSON file per node, edge and graph. On startup these load
+into flat dicts plus three derived indexes: word counts for keyword
+search, adjacency lists for traversal, and a containment map for nesting.
+
+Reading a node returns its content and a signpost of destinations. Each
+destination carries the verb of the edge that reaches it and an access
+score. Scores order the list. Nothing is hidden: paging and scoped
+queries reach everything stored.
+
+Writing takes noun verb noun triples. Duplicate triples do nothing.
+Verbs must be lowercase snake phrases. A small set of epistemic verbs is
+reserved so stored claims can only be corroborated or contradicted by the
+verify pass, which checks pending claims against search results when you
+run it.
+
+## Design rules
+
+- The consuming agent does all interpretation. This package stores
+  structure and pointers, not summaries.
+- Workspace files are plain JSON, readable and editable by hand. They are
+  the only source of truth. Derived indexes rebuild from them at any time.
+- Access counts rank results but never filter them. Every memory stays
+  reachable; low rank only costs latency.
+- Deletion is explicit. Nothing decays or disappears on its own.
+
+## Non-goals
+
+- Not a vector database. Semantic search is an optional cache over
+  keyword search, not the storage layer.
+- No team sync or cloud service. One workspace, local files, any number
+  of agents on the same machine pointing at it.
+- No automatic summarization. Parents link to children as references,
+  they do not describe them.
+
+## CLI reference
+
+| Command | Purpose |
+|---|---|
+| `miea setup` | interactive workspace setup |
+| `miea init NAME` | create an empty workspace |
+| `miea search QUERY` | find entry points, ranked |
+| `miea land REF` | read a node with its signpost |
+| `miea steer REF DEST` | move along an edge |
+| `miea query-scoped GRAPH QUERY` | search inside one subtree |
+| `miea lca A B` | lowest common ancestor of nodes |
+| `miea add LABEL` | create a node |
+| `miea link A VERB B` | add a named edge |
+| `miea wakeup` | session-start snapshot for agent context |
+| `miea placement A B` | suggest where a triple belongs |
+| `miea verify` | check pending claims against search results |
+| `miea provenance` | audit claims without provenance |
+| `miea forget REF` | delete a node |
+
+MCP tools mirror these operations under two tiers. Readers get search,
+land, steer, scoped queries and LCA. Writers also get add, link, forget,
+neighbors, placement, verify and provenance.
+
+## Development
+
+```bash
+git clone https://github.com/Kushal2205a/miea-mem.git
+cd miea-mem
+uv sync
+uv run pytest
 ```
 
-Files are never grepped or dumped raw — the core returns shaped payloads only.
-Ranking (breadth × recency) orders results but never filters: all memories are
-equal in importance; low rank costs latency, never visibility.
+## License
 
-## Status
-
-Core complete (47 tests): model, store, waterslide read loop with signpost
-paging, write tier with guardrails, LCA, promotion-split, provenance audit,
-epistemic verify pass, hybrid FTS+vector search, `wakeup` snapshot, setup
-wizard, CLI + MCP server with read/write tiers.
+MIT
