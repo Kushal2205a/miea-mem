@@ -119,10 +119,16 @@ the ratios hold.
 | resident memory | 34 MB | 65 MB |
 
 Reads and writes stay fast because everything happens in memory and the
-files are written through. Cold load grows linearly with file count since
-every entity is its own JSON file, which is the main limit of this
-design. Workspaces in the tens of thousands of nodes stay usable, past
-that the startup cost is the thing to watch.
+files are written through. Semantic search trades speed for recall. It
+finds memories by meaning when the query shares no words with them, and
+it costs roughly 0.8 seconds per query at ten thousand nodes because
+vectors are compared one by one.
+
+Cold load grows linearly with file count since every entity is its own
+JSON file, which is the main limit of this design. The numbers above come
+from a 10,000 node workspace. Workspaces that size stay comfortable,
+bigger ones slow down at startup first.
+
 
 ## CLI reference
 
