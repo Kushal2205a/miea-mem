@@ -1,25 +1,5 @@
 # mi∃a
 
-Graph memory for AI agents. Nodes hold facts. Edges name the relationship.
-Paths through the graph read as sentences, Kushal studied_at Woxsen
-University.
-
-```
-              search("university")
-                     |
-                     v
-          [* Kushal]
-            |
-            |   [Biryani]        --likes-->
-            |   [Blade Runner]   --likes-->      read the signpost,
-            |   [Woxsen]         --studied_at--> pick a verb,
-            |   [Capstone story] --experienced-> steer once.
-            |
-            +--------- steer ---------->  [* Woxsen University]
-                                               content found,
-                                               answer ready
-```
-
 ## Install
 
 ```bash
