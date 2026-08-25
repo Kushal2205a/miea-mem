@@ -1,5 +1,18 @@
 # mi∃a
 
+[![PyPI](https://img.shields.io/pypi/v/miea-mem)](https://pypi.org/project/miea-mem/)
+[![Python](https://img.shields.io/pypi/pyversions/miea-mem)](https://pypi.org/project/miea-mem/)
+[![Tests](https://github.com/Kushal2205a/miea-mem/actions/workflows/test.yml/badge.svg)](https://github.com/Kushal2205a/miea-mem/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Graph memory for AI agents, stored as plain JSON files and queried over
+MCP. No embedding pipeline, no summaries. Structure and pointers only,
+the consuming agent does the interpreting.
+
+Other memory tools extract facts into vector databases and pre-compute
+digests. This one stores noun verb noun triples as readable JSON and
+serves them back through a signpost the agent steers along at read time.
+
 ## Install
 
 ```bash
@@ -33,6 +46,18 @@ Under the hood the agent runs `search` to find an entry node, reads its
 content and signpost with `land`, then follows named edges with `steer`
 until it has the answer.
 
+A landed node looks like this.
+
+```
+* [Kushal] (anchor)
+  first: 2026-08-23
+  epistemic: unverifiable
+  destinations:
+    [Biryani] --likes--> (score 2.00)
+    [Blade Runner 2049] --likes--> (score 2.00)
+    [Woxsen University 2022-2026] --studied_at--> (score 2.69)
+```
+
 You can also drive it from the terminal.
 
 ```bash
@@ -65,8 +90,8 @@ run it.
   structure and pointers.
 - Workspace files are plain JSON, readable and editable by hand. They are
   the only source of truth. Derived indexes rebuild from them at any time.
-- Access counts rank results without ever filtering them. Every memory stays
-  reachable, low rank only costs latency.
+- Access counts rank results without ever filtering them. Every memory
+  stays reachable, low rank only costs latency.
 - Deletion is explicit. Nothing decays or disappears on its own.
 
 ## CLI reference
