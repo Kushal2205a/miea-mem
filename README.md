@@ -48,9 +48,7 @@ Later, ask it questions.
 
 > what food do I like?
 
-Under the hood the agent runs `search` to find an entry node, reads its
-content and signpost with `land`, then follows named edges with `steer`
-until it has the answer.
+The agent runs `search` to find an entry node, reads its content and signpost with `land`, then follows named edges with `steer` until it has the answer.
 
 A landed node looks like this.
 
@@ -105,8 +103,7 @@ run it.
 Timings on a Ryzen 7 laptop with NVMe storage, Linux, p50 over repeated
 runs, keyword search only. Workspaces use a realistic topology where
 fanout stays near the split cap. Rerun yourself with
-`uv run python bench/run.py 1000 10000`; absolute numbers vary by machine,
-the ratios hold.
+`uv run python bench/run.py 1000 10000`; The exact numbers will differ machine to machine, but the ratios between operations stay the same..
 
 | Operation | 1,000 nodes | 10,000 nodes |
 |---|---|---|
