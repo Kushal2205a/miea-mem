@@ -1,4 +1,4 @@
-# Core engine. Loads the workspace files into flat tables, builds derived
+# Core engine, Handles the search.Loads the workspace files into flat tables, builds derived
 # indexes, and implements every operation: search, landing, steering,
 # scoped queries, LCA, writes, deletion, splitting.
 
