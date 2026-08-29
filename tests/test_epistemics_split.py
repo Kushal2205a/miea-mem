@@ -180,6 +180,57 @@ def test_split_persists(mem: Memory, tmp_path):
         assert fresh.nodes[gid].child_graph_id in fresh.graphs
 
 
+def test_split_anchor_ancestry_reaches_parent_node(mem: Memory):
+    # Split inside a nested graph: anchors must chain up to the parent
+    # node in the same session, not only after a reload. At root level
+    # the fix is invisible (the root graph has no parent node), so this
+    # builds the nested case.
+    from miea_mem.model import Graph, new_id
+
+    mem.create_node("Postgres")
+    pg = mem._resolve("Postgres")
+    child = Graph(id=new_id(), name="PG internals",
+                  parent_node_id=pg.id)
+    mem.graphs[child.id] = child
+    mem.store.save_graph(child)
+    pg.child_graph_id = child.id
+    mem.store.save_node(pg)
+    for i in range(12):
+        label = f"pgtopic{i}"
+        mem.create_node(label, under_graph=child.id)
+        if i % 2 == 0:
+            mem.write_triple("Postgres", "uses", label)
+
+    created = mem.split_if_overloaded(pg.id, cap=5)
+    assert len(created) >= 2
+    for gid in created:
+        # live-session pointer names the owning graph AND the parent
+        # node, identical to what _load() rebuilds on startup
+        assert mem.parent_of[gid] == (child.id, pg.id)
+        # the parent node is recognized as ancestor of its own branch
+        sub = mem.graphs[mem.nodes[gid].child_graph_id]
+        member = mem.nodes[next(iter(sub.node_ids))]
+        ctx = mem.lca_context(["Postgres", member.label])
+        assert ctx["lca_kind"] == "node"
+        assert ctx["lca_name"] == "Postgres"
+
+    # cousins in different branches share the nested graph as common
+    # ground instead of returning nothing
+    a, b = created[0], created[1]
+    m1 = mem.nodes[next(iter(
+        mem.graphs[mem.nodes[a].child_graph_id].node_ids))]
+    m2 = mem.nodes[next(iter(
+        mem.graphs[mem.nodes[b].child_graph_id].node_ids))]
+    ctx = mem.lca_context([m1.label, m2.label])
+    assert ctx["lca_kind"] == "graph"
+    assert ctx["lca_name"] == "PG internals"
+
+    # reload parity: a fresh Memory rebuilds the identical pointers
+    fresh = Memory(str(mem.store.root))
+    for gid in created:
+        assert fresh.parent_of[gid] == mem.parent_of[gid]
+
+
 # -- signpost epistemic status -------------------------------------------------
 
 

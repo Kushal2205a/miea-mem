@@ -30,6 +30,20 @@ class Breadth:
 
 
 @dataclass
+class DivergenceEntry:
+    # One fork entry in a parent's divergence map: a branch route, never a
+    # summary. kind "anchor" routes to an intermediate node and carries a
+    # cue to its hottest leaf; kind "leaf" is a singleton branch routing to
+    # itself, cue fields left unset. Pointers and labels only, ordering is
+    # computed live from breadth at read time.
+    node_id: str
+    label: str
+    kind: str = "leaf"  # anchor | leaf
+    cue_leaf_id: str | None = None
+    cue_label: str | None = None
+
+
+@dataclass
 class Node:
     id: str
     label: str
@@ -37,6 +51,10 @@ class Node:
     tags: list[str] = field(default_factory=list)
     content: str = ""  # plain text, the LLM interprets at read time
     child_graph_id: str | None = None
+    # fork entries for the branch tier beneath this node. Derived but
+    # persisted (a rebuildable cache in the node file): mark dirty on
+    # structure writes, regenerate on access.
+    divergence_map: list[DivergenceEntry] = field(default_factory=list)
     epistemic_status: str = "unverifiable"
     breadth: Breadth = field(default_factory=Breadth)
     created_at: str = field(default_factory=now_iso)
@@ -83,6 +101,26 @@ def _write(path: Path, obj: dict) -> None:
 
 # Node translation
 
+def divergence_entry_to_dict(e: DivergenceEntry) -> dict:
+    return {
+        "nodeId": e.node_id,
+        "label": e.label,
+        "kind": e.kind,
+        **({"cueLeafId": e.cue_leaf_id} if e.cue_leaf_id else {}),
+        **({"cueLabel": e.cue_label} if e.cue_label else {}),
+    }
+
+
+def divergence_entry_from_dict(d: dict) -> DivergenceEntry:
+    return DivergenceEntry(
+        node_id=d["nodeId"],
+        label=d.get("label", ""),
+        kind=d.get("kind", "leaf"),
+        cue_leaf_id=d.get("cueLeafId"),
+        cue_label=d.get("cueLabel"),
+    )
+
+
 def node_to_dict(n: Node) -> dict:
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -92,6 +130,9 @@ def node_to_dict(n: Node) -> dict:
         "tags": n.tags,
         "content": n.content,
         **({"childGraphId": n.child_graph_id} if n.child_graph_id else {}),
+        **({"divergenceMap": [divergence_entry_to_dict(e)
+                              for e in n.divergence_map]}
+           if n.divergence_map else {}),
         "epistemicStatus": n.epistemic_status,
         "breadth": {
             "accessCount": n.breadth.access_count,
@@ -112,6 +153,8 @@ def node_from_dict(d: dict) -> Node:
         tags=d.get("tags", []),
         content=d.get("content", ""),
         child_graph_id=d.get("childGraphId"),
+        divergence_map=[divergence_entry_from_dict(e)
+                        for e in d.get("divergenceMap", [])],
         epistemic_status=d.get("epistemicStatus", "unverifiable"),
         breadth=Breadth(
             access_count=b.get("accessCount", 0),
@@ -196,11 +239,14 @@ def manifest_from_dict(d: dict) -> Manifest:
 
 __all__ = [
     "Breadth",
+    "DivergenceEntry",
     "Edge",
     "Graph",
     "Manifest",
     "Node",
     "SCHEMA_VERSION",
+    "divergence_entry_from_dict",
+    "divergence_entry_to_dict",
     "edge_from_dict",
     "edge_to_dict",
     "graph_from_dict",

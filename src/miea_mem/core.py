@@ -802,7 +802,9 @@ class Memory:
             self.nodes[grp.id] = grp
             self._index_node(grp)
             g.node_ids.add(grp.id)
-            self.parent_of[grp.id] = (g.id, None)
+            # anchors chain up through the owning graph's parent node, the
+            # same shape _load() rebuilds, so lca walks survive the session
+            self.parent_of[grp.id] = (g.id, g.parent_node_id)
             self.store.save_node(grp)
 
             sub = Graph(id=new_id(), name=label, parent_node_id=grp.id)
