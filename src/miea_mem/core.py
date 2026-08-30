@@ -560,8 +560,59 @@ class Memory:
             node.breadth.access_count += 1
             node.breadth.last_accessed = now_iso()
             self.store.save_node(node)
+            self._update_cue(node.id)
             self._note_self_write()
         return self._payload(node, include_edges=include_edges, page=page)
+
+    def _update_cue(self, node_id: str) -> None:
+        # The recency tiebreaker, live: a leaf that outraces its branch's
+        # current cue becomes the cue, so fresh leaves surface on the
+        # signpost immediately - without waiting for a structural write
+        # that would rebuild the whole map. O(fanout): discovers the fork
+        # (nested: the anchor's parent node; root fork: a tier-mate in
+        # the shared graph whose map names the anchor), then swaps.
+        entry = self.parent_of.get(node_id)
+        if not entry:
+            return
+        anchor_id = entry[1]
+        anchor = self.nodes.get(anchor_id) if anchor_id else None
+        if not anchor or anchor.type != "anchor":
+            return                      # the parent is not a route anchor
+        fork = self._fork_of_anchor(anchor_id)
+        anchor_entry = (next((e for e in fork.divergence_map
+                              if e.node_id == anchor_id), None)
+                        if fork else None)
+        if anchor_entry is None or anchor_entry.cue_leaf_id is None:
+            return
+        if anchor_entry.cue_leaf_id == node_id:
+            return                      # already the cue
+        if self.breadth_score(node_id) <= self.breadth_score(
+                anchor_entry.cue_leaf_id):
+            return                      # stored cue still outranks it
+        anchor_entry.cue_leaf_id = node_id
+        anchor_entry.cue_label = self.nodes[node_id].label
+        self.store.save_node(fork)
+        self._note_self_write()
+
+    def _fork_of_anchor(self, anchor_id: str) -> Node | None:
+        # The node whose divergence map names this anchor. Nested forks:
+        # the anchor's parent node. Root forks: a tier-mate in the graph
+        # the anchor lives in (its own parent chain stops at the root
+        # graph), scanned by membership - bounded by the fanout cap.
+        parent_id = self.parent_of.get(anchor_id, (None, None))[1]
+        parent = self.nodes.get(parent_id) if parent_id else None
+        if parent is not None:
+            return parent
+        gid = self.parent_of.get(anchor_id, (None, None))[0]
+        g = self.graphs.get(gid) if gid else None
+        if not g:
+            return None
+        for nid in g.node_ids:
+            n = self.nodes.get(nid)
+            if n and any(e.node_id == anchor_id
+                         for e in n.divergence_map):
+                return n
+        return None
 
     def steer(self, ref: str, destination: str, *,
               include_edges: bool = False) -> Payload:
@@ -580,6 +631,7 @@ class Memory:
             n.breadth.traversal_count += 1
             n.breadth.last_accessed = now_iso()
             self.store.save_node(n)
+            self._update_cue(n.id)
         self._note_self_write()
 
         payload = self._payload(nxt, include_edges=include_edges)
@@ -644,6 +696,7 @@ class Memory:
             landing.breadth.access_count += 1
             landing.breadth.last_accessed = now
             self.store.save_node(landing)
+        self._update_cue(landing.id)
         self._note_self_write()
 
         payload = self._payload(landing)
@@ -853,6 +906,7 @@ class Memory:
             n = self.nodes[nid]
             n.breadth.access_count += 1
             self.store.save_node(n)
+            self._update_cue(n.id)
             out.append(self._payload(n))
         self._note_self_write()
         return out

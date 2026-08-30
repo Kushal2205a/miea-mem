@@ -48,7 +48,10 @@ Later, ask it questions.
 
 > what food do I like?
 
-The agent runs `search` to find an entry node, reads its content and signpost with `land`, then picks a direction with `route` — a hybrid match over the fork's branch entries — and rides the chosen branch in one pass with `slide`, checking sufficiency against the proposition chain on arrival.
+The agent uses `search` to find an entry node. It reads the node content
+and signpost with `land`. At a fork it uses `route` to match a query
+against the branch entries. It uses `slide` to descend into the chosen
+branch in one call.
 
 A landed node looks like this.
 
@@ -82,15 +85,15 @@ destination carries the verb of the edge that reaches it and an access
 score. Scores order the list. Nothing is hidden, paging and scoped queries
 reach everything stored.
 
-Fork nodes resolve their branch tier through a stored divergence map of
-pointers — one entry per child branch: the branch's lowest common
-ancestor (an anchor, or the leaf itself for a singleton) plus a cue to its
-hottest leaf. The map is stored in the node file but ordered live from
-breadth at read time, and regenerates lazily when a structural write marks
-it stale. With a query in hand, `route` hybrid-matches across the branch
-entries; `slide` then rides the chosen branch in one pass, returning the
-noun-verb-noun chain and any slid-past nodes so sufficiency is judged on
-arrival.
+A fork node stores a divergence map. The map holds one pointer per child
+branch. Each pointer names the branch's lowest common ancestor. The
+ancestor is an anchor node, or it is the leaf node for a singleton branch.
+Each pointer also names the branch's highest-breadth leaf as a cue. The
+map lives in the node file. Breadth scores order the map at read time. A
+structural write marks the map stale. The next access rebuilds it.
+`route` matches a query against the branch entries. `slide` descends into
+the chosen branch in one call. It returns the noun-verb-noun path and the
+nodes it passed.
 
 Writing takes noun verb noun triples. Duplicate triples do nothing. Verbs
 must be lowercase snake phrases. A small set of epistemic verbs is
@@ -128,13 +131,12 @@ fanout stays near the split cap. Rerun yourself with
 | resident memory | 30 MB | 30 MB |
 
 Reads and writes stay fast because everything happens in memory and the
-files are written through. Direction picking (`route`) scores only the
-fork's branch entries plus their cue leaves, so it is cheaper than a
-single `land`; the one-pass `slide` costs about the same as one `steer`
-while covering the whole descent. Semantic search trades speed for
-recall — it finds memories by meaning when the query shares no words with
-them, and it costs roughly 0.8 seconds per query at ten thousand nodes
-because vectors are compared one by one.
+files are written through. `route` scores only the fork's branch entries
+and their cue leaves, so it is faster than one `land`. `slide` descends in
+one call and costs about the same as one `steer`. Semantic search trades
+speed for recall. It finds memories by meaning when the query shares no
+words with them. It costs about 0.8 seconds per query at ten thousand
+nodes because vectors are compared one by one.
 
 Cold load grows linearly with file count since every entity is its own
 JSON file, which is the main limit of this design. The numbers above come

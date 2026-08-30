@@ -190,6 +190,72 @@ def test_unsplit_tier_stays_map_free(mem: Memory):
     assert mem.nodes[pg.id].divergence_map == []
 
 
+def test_cue_updates_when_leaf_overtakes_it(mem: Memory):
+    # the recency tiebreaker works live, without a structural write
+    pg, child = _nested_hub(mem)
+    mem.split_if_overloaded(pg.id, cap=5)
+    mem.land("Postgres", mark_access=False)
+    fork = mem.nodes[pg.id]
+    unlinked = next(e for e in fork.divergence_map
+                    if "unlinked" in e.label)
+    old_cue = unlinked.cue_leaf_id
+    assert old_cue is not None
+    # heat a DIFFERENT leaf in the same branch until it beats the cue
+    branch_members = [
+        nid for nid in mem.nodes
+        if nid != old_cue and _is_child_of(mem, nid, unlinked.node_id)]
+    target = next(nid for nid in branch_members if nid in mem.nodes)
+    for _ in range(3):
+        mem.land(mem.nodes[target].label)
+    refreshed = mem.nodes[pg.id]
+    new_entry = next(e for e in refreshed.divergence_map
+                     if "unlinked" in e.label)
+    assert new_entry.cue_leaf_id == target
+    # route now attributes a leaf-specific query to the right branch
+    out = mem.route("Postgres", mem.nodes[target].label)
+    assert out["routes"][0]["node_id"] == unlinked.node_id
+    assert out["routes"][0]["cue_id"] == target
+
+
+def _is_child_of(mem: Memory, nid: str, anchor_id: str) -> bool:
+    # nid lives inside the anchor's owned sub-graph
+    anchor = mem.nodes.get(anchor_id)
+    g = mem.graphs.get(anchor.child_graph_id) if anchor else None
+    return bool(g and nid in g.node_ids)
+
+
+def test_cue_updates_for_root_fork_tier_mates(mem: Memory):
+    # root-level fork: anchors are tier-mates of the fork node, their
+    # parent chain stops at the root graph; the cue still refreshes live
+    mem.create_node("User")
+    user = mem._resolve("User")
+    for i in range(12):
+        mem.create_node(f"u{i}", content=f"topic {i} postgres vacuum")
+        if i % 2 == 0:
+            mem.write_triple("User", "uses", f"u{i}")
+    mem.split_if_overloaded(user.id, cap=5)
+    mem.land("User", mark_access=False)
+    fork = mem.nodes[user.id]
+    unlinked = next(e for e in fork.divergence_map
+                    if "unlinked" in e.label)
+    old_cue = unlinked.cue_leaf_id
+    target = next(nid for nid in mem.nodes
+                  if nid != old_cue and mem.nodes[nid].label != "User"
+                  and _is_child_of(mem, nid, unlinked.node_id))
+    for _ in range(3):
+        mem.land(mem.nodes[target].label)
+    refreshed = next(e for e in mem.nodes[user.id].divergence_map
+                     if "unlinked" in e.label)
+    assert refreshed.cue_leaf_id == target
+
+
+def _is_child_of(mem: Memory, nid: str, anchor_id: str) -> bool:
+    # nid lives inside the anchor's owned sub-graph
+    anchor = mem.nodes.get(anchor_id)
+    g = mem.graphs.get(anchor.child_graph_id) if anchor else None
+    return bool(g and nid in g.node_ids)
+
+
 # -- signpost rendering through the map ----------------------------------------
 
 
