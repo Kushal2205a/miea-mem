@@ -94,6 +94,16 @@ def route(ctx: click.Context, ref: str, query: str, limit: int):
         _mem(ctx.obj["root"]).route(ref, query, limit=limit), indent=2))
 
 
+@cli.command("suggest-split")
+@click.argument("ref")
+@click.argument("query")
+@click.pass_context
+def suggest_split(ctx: click.Context, ref: str, query: str):
+    """Diagnose a fork: routing ties plus a semantic split preview."""
+    click.echo(json.dumps(
+        _mem(ctx.obj["root"]).suggest_split(ref, query), indent=2))
+
+
 @cli.command("query-scoped")
 @click.argument("graph_ref")
 @click.argument("query")

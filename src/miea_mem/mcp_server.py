@@ -93,6 +93,16 @@ async def route(node_ref: str, query: str, limit: int = 5) -> str:
 
 
 @mcp.tool()
+async def suggest_split(node_ref: str, query: str) -> str:
+    """Diagnose a fork: does the routing signal tie under this query,
+    and where would a semantic promotion-split cut? Read-only preview;
+    running the split is a write-tier act."""
+    import json
+
+    return json.dumps(_mem().suggest_split(node_ref, query), indent=2)
+
+
+@mcp.tool()
 async def query_scoped(graph_ref: str, query: str, limit: int = 5) -> str:
     """Deep dive inside one subtree (graph name or id). The server dives and
     returns matching payloads. Use this instead of exploring when a signpost

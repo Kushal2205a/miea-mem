@@ -754,27 +754,68 @@ class Memory:
             except Exception:
                 vec = []               # degrade to keyword, never crash
 
-        # breadth prior: hot routes win ties between relevance legs
-        hot = sorted(ids, key=lambda nid: (-self.breadth_score(nid, now),
-                                           nid))
-        fused = rrf_fuse([leg for leg in (kw, vec, hot) if leg],
-                         top=len(ids))
+        # relevance legs fuse through RRF; breadth orders whatever they
+        # do not separate, so hot routes win ties without ever outvoting
+        # a relevance hit. Unmatched candidates trail, breadth-ordered -
+        # rank orders, never filters.
+        legs = [leg for leg in (kw, vec) if leg]
+        fused: dict[str, float] = {}
+        if legs:
+            for nid, score in rrf_fuse(legs, top=len(ids)):
+                fused[nid] = score
+        ordered = sorted(
+            ids,
+            key=lambda nid: (-fused.get(nid, 0.0),
+                             -self.breadth_score(nid, now), nid))
 
-        matched = bool(kw or vec)
+        matched = bool(legs)
         ambiguous = False
-        # ambiguity means conflicting relevance evidence; with no
-        # relevance leg at all the order is pure breadth, not a tie
-        if matched and len(fused) >= 2 and fused[0][1] > 0:
-            ambiguous = (fused[0][1] - fused[1][1]) / fused[0][1] < 0.15
+        # ambiguity means conflicting relevance evidence: two routes
+        # with real votes finishing neck and neck
+        if matched and len(ordered) >= 2:
+            s1 = fused.get(ordered[0], 0.0)
+            s2 = fused.get(ordered[1], 0.0)
+            if s1 > 0 and s2 > 0:
+                ambiguous = (s1 - s2) / s1 < 0.15
 
         routes = []
-        for nid, score in fused[:max(1, min(limit, len(ids)))]:
+        for nid in ordered[:max(1, min(limit, len(ids)))]:
             r = dict(rows[nid])
-            r["score"] = round(score, 4)
+            r["score"] = round(fused.get(nid, 0.0), 4)
             routes.append(r)
         return {"node": {"id": node.id, "label": node.label},
                 "query": query, "matched": matched,
                 "ambiguous": ambiguous, "routes": routes}
+
+    def suggest_split(self, ref: str, query: str, limit: int = 5) -> dict:
+        # Read-time answer to the design doc's open question on split
+        # triggers and clustering. The fork's own routing signal says
+        # when a boundary is unclear (route ties under a real query),
+        # and the semantic grouping preview says where the cut would
+        # go. Nothing here mutates; running the split stays an explicit
+        # write-tier act.
+        self.refresh_if_changed()
+        node = self._resolve(ref)
+        out = self.route(ref, query, limit=limit)
+        tied = []
+        if out["matched"] and out["routes"]:
+            floor = out["routes"][0]["score"] * 0.85
+            tied = [r["label"] for r in out["routes"]
+                    if r["score"] >= floor]
+        preview = None
+        if self._vector_index is not None:
+            g = self._tier_graph(node)
+            if g:
+                members = [self.nodes[nid] for nid in g.node_ids
+                           if nid != node.id and nid in self.nodes]
+                preview = [
+                    {"hint": hint, "labels": sorted(m.label for m in ms)}
+                    for hint, ms in self._group_members(
+                        members, "semantic", 0.5)]
+        return {"node": {"id": node.id, "label": node.label},
+                "query": query, "matched": out["matched"],
+                "ambiguous": out["ambiguous"], "tied_routes": tied,
+                "semantic_groups": preview}
 
     def query_scoped(self, graph_ref: str, query: str,
                      limit: int = 5) -> list[Payload]:
@@ -1077,9 +1118,55 @@ class Memory:
         return sum(1 for nid in g.node_ids
                    if nid != node_id and nid in self.nodes)
 
-    def split_if_overloaded(self, node_id: str, cap: int = 9) -> list[str]:
-        # Groups children by shared verb neighborhood into intermediate
-        # anchor nodes. Pure structure, no model involved. Returns the
+    def _group_members(self, members: list[Node], strategy: str,
+                       threshold: float) -> list[tuple[str, list[Node]]]:
+        # Partitions tier members for a promotion-split into
+        # (label hint, [members]) pairs. "verbs" keys on the sorted verb
+        # neighborhood; "semantic" clusters greedily by embedding cosine
+        # against each cluster's leader (deterministic: members walk in
+        # id order), so content similarity decides the boundary and
+        # same-verb strangers stay apart. Falls back to verbs when no
+        # embedder is loaded.
+        if strategy == "semantic" and self._vector_index is not None:
+            from .semantic import cosine
+
+            self._vector_index.ensure_all(self.nodes)
+            clusters: list[list[Node]] = []
+            for m in sorted(members, key=lambda n: n.id):
+                v = self._vector_index.vectors.get(m.id)
+                best: list[Node] | None = None
+                best_sim = threshold
+                if v:
+                    for cl in clusters:
+                        lv = self._vector_index.vectors.get(cl[0].id)
+                        if lv:
+                            sim = cosine(v, lv)
+                            if sim >= best_sim:
+                                best, best_sim = cl, sim
+                if best is None:
+                    clusters.append([m])
+                else:
+                    best.append(m)
+            return [(cl[0].label[:40], cl) for cl in clusters]
+        groups: dict[tuple, list[Node]] = {}
+        for m in members:
+            verbs = tuple(sorted(
+                {self.edges[e].verb
+                 for e in self.out_edges.get(m.id, [])} |
+                {self.edges[e].verb
+                 for e in self.in_edges.get(m.id, [])}))
+            groups.setdefault(verbs or ("unlinked",), []).append(m)
+        return [(("related" if not verbs else
+                  ", ".join(verbs[:3])[:40]), ms)
+                for verbs, ms in groups.items()]
+
+    def split_if_overloaded(self, node_id: str, cap: int = 9,
+                            strategy: str = "verbs",
+                            threshold: float = 0.5) -> list[str]:
+        # Groups tier members into intermediate anchor nodes: "verbs"
+        # keys on the shared verb neighborhood (pure structure, no
+        # model), "semantic" clusters by embedding cosine so content
+        # similarity decides where the boundary goes. Returns the
         # created group node ids.
         parent = self.nodes[node_id]
         gid = parent.child_graph_id or self.parent_of.get(
@@ -1091,26 +1178,16 @@ class Memory:
         if len(members) <= cap:
             return []
 
-        # Signature is the sorted set of verbs touching each member.
-        groups: dict[tuple, list[Node]] = {}
-        for m in members:
-            verbs = tuple(sorted(
-                {self.edges[e].verb
-                 for e in self.out_edges.get(m.id, [])} |
-                {self.edges[e].verb
-                 for e in self.in_edges.get(m.id, [])}))
-            groups.setdefault(verbs or ("unlinked",), []).append(m)
-
-        oversized = [v for v, ms in groups.items() if len(ms) > cap]
+        groups = self._group_members(members, strategy, threshold)
+        oversized = [hint for hint, ms in groups if len(ms) > cap]
         if len(groups) < 2 and not oversized:
             return []  # no boundary to cut along, refuse
 
         created: list[str] = []
-        for verbs, ms in groups.items():
+        for hint, ms in groups:
             if len(ms) < 2:
                 continue  # wrapping singletons adds nothing
-            label = f"{parent.label}: " + (", ".join(verbs[:3])[:40]
-                                           or "related")
+            label = f"{parent.label}: {hint}"
             grp = Node(id=new_id(), label=label, type="anchor")
             self.nodes[grp.id] = grp
             self._index_node(grp)
