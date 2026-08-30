@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from .model import Breadth, Edge, Graph, Manifest, Node, new_id
+from .model import Breadth, DivergenceEntry, Edge, Graph, Manifest, Node, new_id
 from .store import Store
 
 STOPWORDS = frozenset(
@@ -66,6 +66,8 @@ class Destination:
     direction: str | None     # "out", "in" or "child"
     score: float = 0.0
     epistemic_status: str | None = None
+    cue_node_id: str | None = None   # map anchor rows: hottest leaf below
+    cue_label: str | None = None     # the branch, shown as a routing cue
 
     def render(self) -> str:
         if self.direction == "out":
@@ -74,7 +76,10 @@ class Destination:
             via = f" <--{self.verb}-- "
         else:
             via = " > "
-        line = f"[{self.label}]{via}(score {self.score:.2f}"
+        line = f"[{self.label}]{via}"
+        if self.cue_label:
+            line += f"cue: [{self.cue_label}] "
+        line += f"(score {self.score:.2f}"
         if self.epistemic_status and self.epistemic_status != "unverifiable":
             line += f", {self.epistemic_status}"
         return line + ")"
@@ -203,7 +208,8 @@ class Memory:
         for gid, g in self.graphs.items():
             for nid in g.node_ids:
                 self.parent_of[nid] = (gid, g.parent_node_id)
-        self._dirty_maps = set(m[1] for m in self.parent_of.values() if m[1])
+        # every node re-evaluates its map lazily on next access
+        self._dirty_maps = set(self.nodes)
 
     def refresh_if_changed(self) -> None:
         # Reloads when another process modified the workspace. An MCP server
@@ -272,6 +278,9 @@ class Memory:
 
         now = _time.time()
         dests: list[Destination] = []
+        # the signpost source self-heals: dirty forks rebuild before any
+        # row is read, so direct callers see fresh maps too
+        self._refresh_divergence_map(node)
 
         # Neighbors reached by edges, both directions.
         for eid in self.out_edges.get(node.id, []):
@@ -289,13 +298,28 @@ class Memory:
                                          self.breadth_score(other.id, now),
                                          other.epistemic_status))
 
-        # Siblings through containment: members of our child graph, or of
-        # the graph we ourselves live in.
-        gid = node.child_graph_id or (
-            self.parent_of.get(node.id, (None,))[0]
-        )
-        g = self.graphs.get(gid) if gid else None
-        if g:
+        # Branch tier: the stored divergence map when the fork has one,
+        # live graph membership otherwise. One destination per member;
+        # anchor rows carry their cue leaf and score by the hotter of
+        # the two, so fresh leaves lift their branch immediately.
+        g = self._tier_graph(node)
+        if node.divergence_map:
+            for entry in node.divergence_map:
+                m = self.nodes.get(entry.node_id)
+                if not m:
+                    continue
+                cue_id = entry.cue_leaf_id
+                if cue_id and cue_id not in self.nodes:
+                    cue_id = None
+                score = self.breadth_score(m.id, now)
+                if cue_id:
+                    score = max(score, self.breadth_score(cue_id, now))
+                dests.append(Destination(
+                    m.id, m.label, None, "child", score,
+                    m.epistemic_status,
+                    cue_node_id=cue_id,
+                    cue_label=entry.cue_label if cue_id else None))
+        elif g:
             for nid in g.node_ids:
                 if nid == node.id or nid not in self.nodes:
                     continue
@@ -372,7 +396,10 @@ class Memory:
         return None
 
     def _mark_dirty(self, node_id: str) -> None:
-        # Flags ancestors so their divergence maps regenerate on next access.
+        # Flags every fork whose divergence map a structural change at
+        # node_id invalidates: ancestors via parent pointers, plus for
+        # each graph we own or live in its owning node and tier-mates
+        # whose view spans that graph. Bounded by the fanout cap.
         entry = self.parent_of.get(node_id)
         while entry:
             gid, pid = entry
@@ -381,6 +408,90 @@ class Memory:
                 entry = self.parent_of.get(pid)
             else:
                 break
+        node = self.nodes.get(node_id)
+        gids = []
+        if node and node.child_graph_id:
+            gids.append(node.child_graph_id)   # the graph we own
+        lived_in = self.parent_of.get(node_id, (None,))[0]
+        if lived_in:
+            gids.append(lived_in)              # the graph we live in
+        for gid in gids:
+            g = self.graphs.get(gid)
+            if not g:
+                continue
+            if g.parent_node_id:
+                self._dirty_maps.add(g.parent_node_id)
+            for nid in g.node_ids:
+                n = self.nodes.get(nid)
+                if n and not n.child_graph_id:
+                    self._dirty_maps.add(nid)
+
+    # Divergence maps
+
+    def _tier_graph(self, node: Node) -> Graph | None:
+        # The branch tier a node is viewed over: the graph it owns, else
+        # the graph it lives in.
+        gid = node.child_graph_id or (
+            self.parent_of.get(node.id, (None,))[0])
+        return self.graphs.get(gid) if gid else None
+
+    def _map_warranted(self, node: Node) -> bool:
+        # A stored map only adds information when the tier contains
+        # anchors; otherwise its entries equal the live sibling view and
+        # the signpost computes them anyway.
+        g = self._tier_graph(node)
+        if not g:
+            return False
+        return any(nid != node.id and nid in self.nodes
+                   and self.nodes[nid].child_graph_id
+                   for nid in g.node_ids)
+
+    def _build_divergence_map(self, node: Node) -> list[DivergenceEntry]:
+        # One entry per tier member: anchors route with a cue to their
+        # hottest leaf, singletons route to themselves. Stored order is
+        # deterministic; ranking happens live from breadth at read time.
+        g = self._tier_graph(node)
+        if not g:
+            return []
+        now = datetime.now(timezone.utc).timestamp()
+        entries: list[DivergenceEntry] = []
+        for nid in g.node_ids:
+            m = self.nodes.get(nid)
+            if not m or nid == node.id:
+                continue
+            if m.child_graph_id:
+                candidates = sorted(self._subtree_nodes(m.child_graph_id))
+                cues = sorted(
+                    (cid for cid in candidates if cid in self.nodes),
+                    key=lambda cid: (-self.breadth_score(cid, now), cid))
+                cue = self.nodes[cues[0]] if cues else None
+                entries.append(DivergenceEntry(
+                    node_id=m.id, label=m.label, kind="anchor",
+                    cue_leaf_id=cue.id if cue else None,
+                    cue_label=cue.label if cue else None))
+            else:
+                entries.append(DivergenceEntry(
+                    node_id=m.id, label=m.label, kind="leaf"))
+        entries.sort(key=lambda e: (e.kind, e.label))
+        return entries
+
+    def _refresh_divergence_map(self, node: Node) -> None:
+        # Lazy regeneration per the write policy: dirty forks rebuild on
+        # their next access; cold branches keep cheap stale maps.
+        if node.id not in self._dirty_maps:
+            return
+        self._dirty_maps.discard(node.id)
+        if not self._map_warranted(node):
+            if node.divergence_map:
+                node.divergence_map = []
+                self.store.save_node(node)
+                self._note_self_write()
+            return
+        entries = self._build_divergence_map(node)
+        if node.divergence_map != entries:
+            node.divergence_map = entries
+            self.store.save_node(node)
+            self._note_self_write()
 
     # Search
 
@@ -636,6 +747,9 @@ class Memory:
         # memberships, then caches, then identity, then the file.
         self.refresh_if_changed()
         node = self._resolve(ref)
+        # membership change: dirty every fork viewing this tier before
+        # the pointers come apart
+        self._mark_dirty(node.id)
         removed = 1
 
         for eid in list(self.out_edges.get(node.id, [])) + \
@@ -658,6 +772,7 @@ class Memory:
             self._vector_index.save()
         del self.nodes[node.id]
         self.store.delete_node(node.id)
+        self._dirty_maps.discard(node.id)
         self._note_self_write()
         return removed
 
@@ -821,4 +936,8 @@ class Memory:
 
         self.store.save_graph(g)
         self._mark_dirty(node_id)
+        # split wrote files: refresh the fingerprint so the next read
+        # does not mistake our own writes for an external editor and
+        # wipe the dirty marks we just set
+        self._note_self_write()
         return created
