@@ -668,6 +668,114 @@ class Memory:
         payload.transit_notes = notes[:8]
         return payload
 
+    def route(self, ref: str, query: str, limit: int = 5) -> dict:
+        # Direction picking by hybrid match over a fork's branch entries.
+        # Candidates are the standing node itself (it may already be the
+        # answer) plus its tier routes; each anchor route inherits the
+        # best score of itself and its cue leaf, so leaf-specific
+        # queries attribute to the branch they live under. Keyword leg,
+        # a subtree-scoped vector leg (one query embedding, cosine
+        # against route and cue vectors only - never the whole
+        # workspace), and a breadth prior fuse through RRF. Rank
+        # orders, never filters.
+        from .semantic import cosine, rrf_fuse
+
+        self.refresh_if_changed()
+        node = self._resolve(ref)
+        self._refresh_divergence_map(node)
+        now = datetime.now(timezone.utc).timestamp()
+
+        rows: dict[str, dict] = {}
+
+        def add(nid: str, kind: str, cue_label: str | None,
+                cue_id: str | None) -> None:
+            n = self.nodes.get(nid)
+            if n and nid not in rows:
+                rows[nid] = {"node_id": nid, "label": n.label, "kind": kind,
+                             "cue_label": cue_label, "cue_id": cue_id,
+                             "epistemic_status": n.epistemic_status,
+                             "breadth": round(self.breadth_score(nid, now),
+                                              3)}
+
+        add(node.id, "self", None, None)
+        if node.divergence_map:
+            for e in node.divergence_map:
+                add(e.node_id, e.kind, e.cue_label, e.cue_leaf_id)
+        else:
+            g = self._tier_graph(node)
+            if g:
+                for nid in g.node_ids:
+                    m = self.nodes.get(nid)
+                    if m and nid != node.id:
+                        add(nid, "anchor" if m.child_graph_id else "leaf",
+                            None, None)
+
+        def cue_ids(nid: str) -> list[str]:
+            extra = rows[nid]["cue_id"]
+            return [nid] + ([extra] if extra and extra in self.nodes
+                            else [])
+
+        ids = list(rows)
+        q = Counter(_tokenize(query))
+
+        # keyword leg: best token overlap across the route and its cue
+        kw: list[str] = []
+        if q:
+            scored = []
+            for nid in ids:
+                best = 0.0
+                for cid in cue_ids(nid):
+                    tokens = self._fts.get(cid)
+                    if tokens:
+                        norm = sum(tokens.values()) or 1
+                        best = max(
+                            best, sum((tokens & q).values()) / math.sqrt(norm))
+                if best > 0:
+                    scored.append((best, nid))
+            scored.sort(reverse=True)
+            kw = [nid for _, nid in scored]
+
+        # vector leg: cosine against this tier's vectors only
+        vec: list[str] = []
+        if self._vector_index is not None:
+            try:
+                qv = self._vector_index.embedder.embed([query])[0]
+                scored = []
+                for nid in ids:
+                    best = -1.0
+                    for cid in cue_ids(nid):
+                        v = self._vector_index.vectors.get(cid)
+                        if v:
+                            best = max(best, cosine(qv, v))
+                    if best >= 0.35:
+                        scored.append((best, nid))
+                scored.sort(reverse=True)
+                vec = [nid for _, nid in scored]
+            except Exception:
+                vec = []               # degrade to keyword, never crash
+
+        # breadth prior: hot routes win ties between relevance legs
+        hot = sorted(ids, key=lambda nid: (-self.breadth_score(nid, now),
+                                           nid))
+        fused = rrf_fuse([leg for leg in (kw, vec, hot) if leg],
+                         top=len(ids))
+
+        matched = bool(kw or vec)
+        ambiguous = False
+        # ambiguity means conflicting relevance evidence; with no
+        # relevance leg at all the order is pure breadth, not a tie
+        if matched and len(fused) >= 2 and fused[0][1] > 0:
+            ambiguous = (fused[0][1] - fused[1][1]) / fused[0][1] < 0.15
+
+        routes = []
+        for nid, score in fused[:max(1, min(limit, len(ids)))]:
+            r = dict(rows[nid])
+            r["score"] = round(score, 4)
+            routes.append(r)
+        return {"node": {"id": node.id, "label": node.label},
+                "query": query, "matched": matched,
+                "ambiguous": ambiguous, "routes": routes}
+
     def query_scoped(self, graph_ref: str, query: str,
                      limit: int = 5) -> list[Payload]:
         # Mediated deep dive inside one subtree. Returns answers.

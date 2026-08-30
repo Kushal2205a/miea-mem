@@ -68,6 +68,32 @@ def steer(ctx: click.Context, ref: str, destination: str):
     click.echo(_mem(ctx.obj["root"]).steer(ref, destination).render())
 
 
+@cli.command()
+@click.argument("ref")
+@click.argument("destination")
+@click.option("--deep", is_flag=True,
+              help="Ride on to the branch's cue leaf.")
+@click.option("--query", default=None,
+              help="Rank slid-past nodes by relevance to this query.")
+@click.pass_context
+def slide(ctx: click.Context, ref: str, destination: str, deep: bool,
+          query: str | None):
+    """Ride a branch from ref in one pass instead of steering hop by hop."""
+    click.echo(_mem(ctx.obj["root"]).slide(ref, destination, deep=deep,
+                                           query=query).render())
+
+
+@cli.command()
+@click.argument("ref")
+@click.argument("query")
+@click.option("--limit", default=5)
+@click.pass_context
+def route(ctx: click.Context, ref: str, query: str, limit: int):
+    """Pick a direction: hybrid match over ref's branch entries."""
+    click.echo(json.dumps(
+        _mem(ctx.obj["root"]).route(ref, query, limit=limit), indent=2))
+
+
 @cli.command("query-scoped")
 @click.argument("graph_ref")
 @click.argument("query")

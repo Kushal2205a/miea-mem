@@ -48,7 +48,8 @@ async def test_read_tools_work(ws):
 
 async def test_read_tier_lists_only_read_tools(ws):
     names = {t.name for t in await srv.mcp.list_tools()}
-    assert {"search", "land", "steer", "query_scoped", "lca"} == names
+    assert {"search", "land", "steer", "slide", "route",
+            "query_scoped", "lca"} == names
 
 
 async def test_write_tier_adds_tools_and_they_work(ws):

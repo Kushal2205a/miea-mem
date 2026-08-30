@@ -17,10 +17,10 @@ mcp = MCPServer(
     "miea",
     instructions=(
         "Graph-based agent memory. Structure and pointers only, you are the "
-        "interpreter. Read loop: search then land then steer. Stop when a "
-        "node's content satisfies you; steer along signpost verbs when "
-        "routed; use query_scoped on a dead end. Ranking orders destinations "
-        "but never hides them. Before your first write, read memory://guide."
+        "interpreter. Read loop: search then land then slide; route when "
+        "you hold a query, steer for single hops, query_scoped on a dead "
+        "end. Ranking orders destinations but never hides them. Before "
+        "your first write, read memory://guide."
     ),
 )
 
@@ -64,6 +64,32 @@ async def steer(ref: str, destination: str) -> str:
     """Move from node ref to one of its signpost destinations (label or id).
     Returns the destination's payload plus the sentence-so-far path."""
     return _mem().steer(ref, destination).render()
+
+
+@mcp.tool()
+async def slide(node_ref: str, destination: str, deep: bool = False,
+                query: str | None = None) -> str:
+    """Ride a branch from node_ref in one pass. Lands at the branch
+    entry, or at its cue leaf with deep=true. The payload carries the
+    proposition chain (sentence-so-far) and slid-past notes for the
+    nodes skipped on the way - check sufficiency on arrival, and land
+    on a note's id if it fits better."""
+    return _mem().slide(node_ref, destination, deep=deep,
+                        query=query).render()
+
+
+@mcp.tool()
+async def route(node_ref: str, query: str, limit: int = 5) -> str:
+    """Pick a direction from node_ref's branches by hybrid match
+    (keyword + embedding when available + breadth) over its divergence
+    map; each anchor inherits its cue leaf's relevance. Returns ranked
+    routes; ambiguous=true when the top two tie. Slide into one with
+    slide(node_ref, route_label, deep=true)."""
+    import json
+
+    return json.dumps(
+        _mem().route(node_ref, query, limit=max(1, min(limit, 20))),
+        indent=2)
 
 
 @mcp.tool()
