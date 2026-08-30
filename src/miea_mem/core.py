@@ -482,10 +482,16 @@ class Memory:
 
     def _refresh_divergence_map(self, node: Node) -> None:
         # Lazy regeneration per the write policy: dirty forks rebuild on
-        # their next access; cold branches keep cheap stale maps.
-        if node.id not in self._dirty_maps:
-            return
-        self._dirty_maps.discard(node.id)
+        # their next access; cold branches keep cheap stale maps. A fork
+        # that never had a map builds one on first view - an empty map
+        # on a warranted fork means "not yet computed", not "stale".
+        if node.id in self._dirty_maps:
+            self._dirty_maps.discard(node.id)
+            self._rebuild_map(node)
+        elif not node.divergence_map and self._map_warranted(node):
+            self._rebuild_map(node)
+
+    def _rebuild_map(self, node: Node) -> None:
         if not self._map_warranted(node):
             if node.divergence_map:
                 node.divergence_map = []
@@ -604,18 +610,26 @@ class Memory:
                             if e.node_id == target), None)
             if m_entry and m_entry.cue_leaf_id in self.nodes:
                 target = m_entry.cue_leaf_id
-        # containment path from the target back up to the fork
+        # ride from ref to the target: straight down the chain ref owns,
+        # or one lateral hop when the target sits in ref's own tier (the
+        # root fork's branches are its tier-mates, not descendants)
         chain = [target]
         cur = target
+        home = node.child_graph_id or (
+            self.parent_of.get(node.id, (None,))[0])
         while cur != node.id:
-            pid = self.parent_of.get(cur, (None, None))[1]
+            gid, pid = self.parent_of.get(cur, (None, None))
+            if home and gid == home:
+                break                     # entered ref's tier: hop on
             if not pid:
                 raise LookupError(
-                    f"{destination!r} is not beneath {ref!r}; use steer "
-                    "for edge hops")
+                    f"{destination!r} is not reachable beneath or beside "
+                    f"{ref!r}; use steer for edge hops")
             cur = pid
             chain.append(cur)
-        chain.reverse()                    # [ref, ..., landing]
+        if cur != node.id:
+            chain.append(node.id)         # the lateral hop onto the branch
+        chain.reverse()                   # [ref, ..., landing]
 
         from .model import now_iso
 

@@ -48,7 +48,7 @@ Later, ask it questions.
 
 > what food do I like?
 
-The agent runs `search` to find an entry node, reads its content and signpost with `land`, then follows named edges with `steer` until it has the answer.
+The agent runs `search` to find an entry node, reads its content and signpost with `land`, then picks a direction with `route` — a hybrid match over the fork's branch entries — and rides the chosen branch in one pass with `slide`, checking sufficiency against the proposition chain on arrival.
 
 A landed node looks like this.
 
@@ -82,6 +82,16 @@ destination carries the verb of the edge that reaches it and an access
 score. Scores order the list. Nothing is hidden, paging and scoped queries
 reach everything stored.
 
+Fork nodes resolve their branch tier through a stored divergence map of
+pointers — one entry per child branch: the branch's lowest common
+ancestor (an anchor, or the leaf itself for a singleton) plus a cue to its
+hottest leaf. The map is stored in the node file but ordered live from
+breadth at read time, and regenerates lazily when a structural write marks
+it stale. With a query in hand, `route` hybrid-matches across the branch
+entries; `slide` then rides the chosen branch in one pass, returning the
+noun-verb-noun chain and any slid-past nodes so sufficiency is judged on
+arrival.
+
 Writing takes noun verb noun triples. Duplicate triples do nothing. Verbs
 must be lowercase snake phrases. A small set of epistemic verbs is
 reserved so stored claims can only be corroborated or contradicted by the
@@ -107,19 +117,24 @@ fanout stays near the split cap. Rerun yourself with
 
 | Operation | 1,000 nodes | 10,000 nodes |
 |---|---|---|
-| cold load | 46 ms | 494 ms |
-| search | 5.2 ms | 52.6 ms |
-| land (anchor) | 7.2 ms | 82.6 ms |
-| steer | 7.3 ms | 81.0 ms |
-| write new triple | 7.1 ms | 77.9 ms |
-| write duplicate | 0.2 ms | 2.4 ms |
-| resident memory | 34 MB | 65 MB |
+| cold load | 47 ms | 136 ms |
+| search | 4.9 ms | 14.6 ms |
+| land (anchor) | 7.7 ms | 22.1 ms |
+| steer | 7.9 ms | 24.6 ms |
+| route (direction) | 3.3 ms | 10.7 ms |
+| slide (descent) | 7.8 ms | 24.0 ms |
+| write new triple | 7.8 ms | 22.4 ms |
+| write duplicate | 0.3 ms | 0.7 ms |
+| resident memory | 30 MB | 30 MB |
 
 Reads and writes stay fast because everything happens in memory and the
-files are written through. Semantic search trades speed for recall. It
-finds memories by meaning when the query shares no words with them, and
-it costs roughly 0.8 seconds per query at ten thousand nodes because
-vectors are compared one by one.
+files are written through. Direction picking (`route`) scores only the
+fork's branch entries plus their cue leaves, so it is cheaper than a
+single `land`; the one-pass `slide` costs about the same as one `steer`
+while covering the whole descent. Semantic search trades speed for
+recall — it finds memories by meaning when the query shares no words with
+them, and it costs roughly 0.8 seconds per query at ten thousand nodes
+because vectors are compared one by one.
 
 Cold load grows linearly with file count since every entity is its own
 JSON file, which is the main limit of this design. The numbers above come
@@ -134,7 +149,10 @@ The commands you will touch most.
 ```bash
 miea search "what should I look at first"
 miea land Kushal
+miea route Postgres "vacuum tuning"
+miea slide "Postgres" "Postgres: unlinked" --deep
 miea link Postgres persists_with WAL
+miea suggest-split Postgres "vacuum tuning"
 miea verify
 ```
 

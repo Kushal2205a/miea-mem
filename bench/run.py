@@ -147,6 +147,19 @@ def run_size(n_nodes: int, iterations_scale: float, seed: int) -> dict:
         lambda: mem.steer("User", rng.choice(dests) if dests else leaf),
         max(40, int(200 * iterations_scale)))
 
+    # direction picking over the divergence map: hybrid match across
+    # branch entries, keyword-only here (embedder=None)
+    results["route"] = timed(
+        lambda: mem.route("User", rng.choice(recall_queries)),
+        max(40, int(200 * iterations_scale)))
+
+    # one-pass descent into a branch, deep rides on to its cue leaf
+    branches = [e.label for e in mem.nodes[anchor_id].divergence_map]
+    target = rng.choice(branches) if branches else leaf
+    results["slide"] = timed(
+        lambda: mem.slide("User", target, deep=True),
+        max(40, int(200 * iterations_scale)))
+
     counter = [n_nodes * 10]
     def do_write():
         counter[0] += 1
@@ -194,6 +207,8 @@ def main():
            ("land_anchor", "land anchor"),
            ("land_leaf", "land leaf"),
            ("steer", "steer"),
+           ("route", "route (direction pick)"),
+           ("slide", "slide (one-pass descent)"),
            ("write_new", "write new triple"),
            ("write_duplicate", "write duplicate"),
            ("fanout", "fanout check")]

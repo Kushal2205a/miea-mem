@@ -109,13 +109,17 @@ def test_slide_query_ranks_transit_notes(mem: Memory):
                              "[Branch B]", ">", "[vacuum notes]"]
 
 
-def test_slide_rejects_non_descendants(mem: Memory):
+def test_slide_rejects_unrelated_nodes(mem: Memory):
     pg, child = _nested_hub(mem)
     mem.split_if_overloaded(pg.id, cap=5)
-    with pytest.raises(LookupError, match="not beneath"):
-        mem.slide("pgtopic1", "pgtopic3")     # sibling: not beneath
-    with pytest.raises(LookupError, match="not beneath"):
-        mem.slide("pgtopic0", "Postgres")     # edge hop up: steer instead
+    # unrelated node: not even a destination of the standing node
+    with pytest.raises(LookupError, match="no destination matching"):
+        mem.slide("pgtopic0", "pgtopic1")     # different branches
+    # edge hop up: it IS a destination (via the uses edge), but not
+    # beneath or beside the standing node, so the slide refuses and
+    # points at steer
+    with pytest.raises(LookupError, match="not reachable"):
+        mem.slide("pgtopic0", "Postgres")     # steer instead
 
 
 def test_slide_deep_without_cue_lands_at_entry(mem: Memory):

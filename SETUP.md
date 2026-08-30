@@ -47,7 +47,10 @@ mie add "Postgres" --content "relational database"
 mie link Postgres persists_with WAL        # creates missing nodes
 mie search relational                      # ranked entry points
 mie land Postgres                          # payload + signpost
+mie route Postgres vacuum                  # pick a branch (hybrid match)
+mie slide Postgres "Postgres: internals" --deep  # ride the branch in one pass
 mie steer Postgres WAL                     # ride one edge
+mie suggest-split Postgres vacuum          # fork diagnosis + semantic split preview
 mie wakeup                                 # session-start snapshot (JSON)
 mie lca WAL B-trees                        # shared context of two nodes
 mie placement Postgres WAL                 # where to file a triple
