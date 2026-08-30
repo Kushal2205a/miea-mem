@@ -95,6 +95,7 @@ class Payload:
     total_destinations: int = 0   # full count, may exceed what is shown
     page: int = 0                 # which TOP_K slice of the signpost
     matched_edges: list[dict] = field(default_factory=list)
+    transit_notes: list[dict] = field(default_factory=list)
 
     def render(self) -> str:
         lines = [f"* [{self.node.label}] ({self.node.type})"]
@@ -120,6 +121,10 @@ class Payload:
                 lines.append(
                     f"    {hidden} more exist. Use a scoped query or page "
                     "further to reach them.")
+        if self.transit_notes:
+            lines.append("  slid past (one land(id) away if one fits):")
+            for note in self.transit_notes:
+                lines.append(f"    [{note['label']}] {note['snippet']}")
         return "\n".join(lines)
 
 
@@ -576,6 +581,91 @@ class Memory:
         if dest.verb:
             payload.path_so_far.append(f"--{dest.verb}-->")
         payload.path_so_far.append(f"[{nxt.label}]")
+        return payload
+
+    def slide(self, ref: str, destination: str, *, deep: bool = False,
+              query: str | None = None,
+              mark_access: bool = True) -> Payload:
+        # The waterslide: ride a chosen branch in one pass instead of
+        # steering level by level. Without deep, lands at the branch
+        # entry (no skips). With deep, rides on to the entry's cue leaf,
+        # recording every skipped node as a transit note so the
+        # arrival-time sufficiency check can glance backward. The chain
+        # concatenates into a noun-verb-noun proposition; the judgment
+        # of "enough?" stays with the consuming agent.
+        self.refresh_if_changed()
+        node = self._resolve(ref)
+        entry = self._find_destination(node, destination)
+        if entry is None:
+            raise LookupError(f"no destination matching {destination!r}")
+        target = entry.node_id
+        if deep:
+            m_entry = next((e for e in node.divergence_map
+                            if e.node_id == target), None)
+            if m_entry and m_entry.cue_leaf_id in self.nodes:
+                target = m_entry.cue_leaf_id
+        # containment path from the target back up to the fork
+        chain = [target]
+        cur = target
+        while cur != node.id:
+            pid = self.parent_of.get(cur, (None, None))[1]
+            if not pid:
+                raise LookupError(
+                    f"{destination!r} is not beneath {ref!r}; use steer "
+                    "for edge hops")
+            cur = pid
+            chain.append(cur)
+        chain.reverse()                    # [ref, ..., landing]
+
+        from .model import now_iso
+
+        now = now_iso()
+        for nid in chain:
+            n = self.nodes[nid]
+            n.breadth.traversal_count += 1
+            n.breadth.last_accessed = now
+            self.store.save_node(n)
+        landing = self.nodes[chain[-1]]
+        if mark_access:
+            landing.breadth.access_count += 1
+            landing.breadth.last_accessed = now
+            self.store.save_node(landing)
+        self._note_self_write()
+
+        payload = self._payload(landing)
+        q = Counter(_tokenize(query)) if query else None
+        path: list[str] = []
+        notes: list[dict] = []
+        prev: str | None = None
+        for i, nid in enumerate(chain):
+            n = self.nodes[nid]
+            if prev is not None:
+                verb = None
+                for eid in self.out_edges.get(prev, []):
+                    if self.edges[eid].target_id == nid:
+                        verb = self.edges[eid].verb
+                        break
+                if verb is None:
+                    for eid in self.in_edges.get(nid, []):
+                        if self.edges[eid].source_id == prev:
+                            verb = self.edges[eid].verb
+                            break
+                path.append(f"--{verb}-->" if verb else ">")
+            path.append(f"[{n.label}]")
+            if 0 < i < len(chain) - 1:
+                overlap = 0.0
+                if q:
+                    overlap = float(sum(
+                        (self._fts.get(nid, Counter()) & q).values()))
+                notes.append({"node_id": nid, "label": n.label,
+                              "snippet": (n.content or "")[:120],
+                              "overlap": overlap})
+            prev = nid
+        if q:
+            notes.sort(key=lambda note: (-note["overlap"],
+                                         chain.index(note["node_id"])))
+        payload.path_so_far = path
+        payload.transit_notes = notes[:8]
         return payload
 
     def query_scoped(self, graph_ref: str, query: str,

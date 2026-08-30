@@ -13,7 +13,12 @@ and rankings; you supply judgment. Follow these rules.
 2. `land(ref)` reads a node plus its signpost of destinations.
 3. At each node ask: does this content answer my question?
    - Yes: stop and use it.
-   - No, but a destination matches my intent: `steer(ref, dest)`.
+   - No, but a branch matches my intent: `slide(ref, dest)` rides the
+     whole descent in one pass. Check sufficiency on arrival against
+     the proposition chain and the slid-past notes, not at each hop;
+     a promising slid-past node is one `land(id)` away. Add
+     `deep=True` to ride on to the branch's cue leaf.
+   - No, but a single hop fits: `steer(ref, dest)`.
    - No destination matches: dead end. Report not found or use
      `query_scoped`.
 
