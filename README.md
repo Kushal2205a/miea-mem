@@ -48,10 +48,10 @@ Later, ask it questions.
 
 > what food do I like?
 
-The agent uses `search` to find an entry node. It reads the node content
-and signpost with `land`. At a fork it uses `route` to match a query
-against the branch entries. It uses `slide` to descend into the chosen
-branch in one call.
+The agent starts at the root node. It reads it with `land`. At a fork
+it uses `route` to match a query against the branch entries. It uses
+`slide` to descend into the chosen branch in one call. `search` stays
+as the cold start door, for when the agent does not know the tree yet.
 
 A landed node looks like this.
 

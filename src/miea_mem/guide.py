@@ -9,18 +9,29 @@ and rankings; you supply judgment. Follow these rules.
 
 ## Reading
 
-1. `search(query)` finds entry points.
-2. `land(ref)` reads a node plus its signpost of destinations.
-3. At each node ask: does this content answer my question?
-   - Yes: stop and use it.
-   - No, but a branch matches my intent: `slide(ref, dest)` rides the
-     whole descent in one pass. Check sufficiency on arrival against
-     the proposition chain and the slid-past notes, not at each hop;
-     a promising slid-past node is one `land(id)` away. Add
-     `deep=True` to ride on to the branch's cue leaf.
-   - No, but a single hop fits: `steer(ref, dest)`.
-   - No destination matches: dead end. Report not found or use
-     `query_scoped`.
+The default loop starts at the root fork. You do not need `search` to
+begin.
+
+1. `land(root)` reads the root node. Its signpost lists the branches
+   under it. Each anchor branch shows a cue to its highest-breadth
+   leaf. A singleton branch lists the leaf itself.
+2. `route(node, query)` matches a query against the branch entries and
+   their cues. It returns ranked routes.
+3. `slide(node, route_label, deep=True)` descends into the chosen
+   branch in one call. It lands on the branch's cue leaf. It returns
+   the noun-verb-noun path and the nodes it passed.
+4. Check the landing. Does the content or the path answer the
+   question? Yes: stop and use it. No: read a passed node with
+   `land(id)`, or `route` again from the landing node.
+
+Fallbacks, in the order you reach for them:
+- `steer(ref, dest)` covers a single hop.
+- `search(query)` is the cold start door. Use it when you do not know
+  the tree, or when `route` comes back without a match. It finds entry
+  points by global keyword match.
+- `query_scoped(graph, query)` dives one subtree when a signpost comes
+  up empty.
+- No destination matches at all: report not found.
 
 Signposts show the top seven destinations ranked by access frequency and
 recency. More exist? `land(ref, page=1)`. Destinations carry an epistemic

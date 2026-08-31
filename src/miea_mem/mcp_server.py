@@ -17,10 +17,12 @@ mcp = MCPServer(
     "miea",
     instructions=(
         "Graph-based agent memory. Structure and pointers only, you are the "
-        "interpreter. Read loop: search then land then slide; route when "
-        "you hold a query, steer for single hops, query_scoped on a dead "
-        "end. Ranking orders destinations but never hides them. Before "
-        "your first write, read memory://guide."
+        "interpreter. Read loop: land the root fork, then route with your "
+        "query, then slide into the picked branch. steer covers single "
+        "hops. search is the cold start door for when you do not know the "
+        "tree or route finds no match. query_scoped dives when a signpost "
+        "is empty. Ranking orders destinations but never hides them. "
+        "Before your first write, read memory://guide."
     ),
 )
 
@@ -80,10 +82,10 @@ async def slide(node_ref: str, destination: str, deep: bool = False,
 
 @mcp.tool()
 async def route(node_ref: str, query: str, limit: int = 5) -> str:
-    """Pick a direction from node_ref's branches by hybrid match
-    (keyword + embedding when available + breadth) over its divergence
-    map; each anchor inherits its cue leaf's relevance. Returns ranked
-    routes; ambiguous=true when the top two tie. Slide into one with
+    """Pick a direction from node_ref's branches. Hybrid match (keyword,
+    embedding when available, breadth) over its divergence map. Each
+    anchor inherits its cue leaf's relevance. Returns ranked routes.
+    ambiguous=true when the top two tie. Slide into one with
     slide(node_ref, route_label, deep=true)."""
     import json
 
@@ -94,9 +96,9 @@ async def route(node_ref: str, query: str, limit: int = 5) -> str:
 
 @mcp.tool()
 async def suggest_split(node_ref: str, query: str) -> str:
-    """Diagnose a fork: does the routing signal tie under this query,
-    and where would a semantic promotion-split cut? Read-only preview;
-    running the split is a write-tier act."""
+    """Diagnose a fork. Does the routing signal tie under this query,
+    and where would a semantic promotion-split cut? Read-only preview.
+    Running the split is a write-tier act."""
     import json
 
     return json.dumps(_mem().suggest_split(node_ref, query), indent=2)
